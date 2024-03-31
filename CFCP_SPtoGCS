@@ -1,0 +1,225 @@
+from google.cloud import bigquery 
+import json 
+import pandas as pd   
+import requests
+from datetime import datetime, timezone, timedelta
+import functions_framework
+import requests
+from datetime import datetime, timezone
+import base64
+import google.auth.transport.requests
+import msal
+from io import StringIO
+from google.cloud import storage
+import os
+@functions_framework.http
+def sptogcs_http(request):
+    request_json = request.get_json(silent=True)
+    request_args = request.args
+
+    if request_json and 'name' in request_json:
+        name = request_json['name']
+    elif request_args and 'name' in request_args:
+        name = request_args['name']
+    else:
+        name = 'World'
+
+    # Access the additional message
+    if request_json and 'message' in request_json:
+        message = request_json['message']
+    else:
+        message = 'No message provided'
+
+    print(f'Received message: {message}')
+    # sre_datalake_project_id = cf_event.get_var('sre_datalake_project_id')
+
+    # sre_database_in = cf_event.get_var('sre_database_in')
+    # datalake_project_id = cf_event.get_var('datalake_project_id')
+    # database_in = cf_event.get_var('database_in')
+    sre_datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    sre_database_in = 'entprep_196865_in'
+    database_in = 'entprep_196865_in'
+    datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    client = bigquery.Client()
+    # env_name = cf_event.get_var('env_name_value')
+    env_name='PROD'
+    data1 = {
+        'grant_type':'client_credentials',
+        'resource': '00000003-0000-0ff1-ce00-000000000000/ts.accenture.com@e0793d39-0939-496d-b129-198edd916feb',
+        'client_id': 'be27f10d-572f-4d16-be88-2d88b0192ee7@e0793d39-0939-496d-b129-198edd916feb',
+        'client_secret': '6yfhkgp8ZxKti7WxPxVyrapcBNa5CXAuZF+fFOtw5wE=',
+    }
+    
+    headers1 = {
+        'Content-Type':'application/x-www-form-urlencoded'
+    }
+    
+    url1 = "https://accounts.accesscontrol.windows.net/e0793d39-0939-496d-b129-198edd916feb/tokens/OAuth/2"
+    r1 = requests.post(url1, data=data1, headers=headers1)
+    json_data1 = json.loads(r1.text)
+    token = json_data1['access_token']
+  
+    headers2 = {
+        'Authorization': f"Bearer {token}",
+        'Accept':'application/json;odata=verbose',
+        'Content-Type': 'application/json;odata=verbose',
+        'If-Match':'*'
+    }
+    def update_sharepoint(Error,file_name,env_name):
+                print("Error:",Error," file_name:",file_name," env_name: ",env_name)
+                if Error==None:
+                    Key=f"File_Moved_to_GCS_{env_name}"
+                    value="true"
+                else:
+                    Key=f"ErrorMessage"
+                    value=f"{Error}"
+                data = {
+                                "__metadata": {"type": "SP.Data.Document_x0020_LibraryItem"},
+                                f"{Key}": f"{value}"
+                            }
+                url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/GetFolderByServerRelativeUrl('Document Library')/Files('{file_name}')/ListItemAllFields"
+                print(url)
+                p = requests.patch(url, headers=headers2,json=data)
+                print(p)
+                print("Status Updated in SP!")
+    url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/GetFolderByServerRelativeUrl('Document Library')/Files"
+    p = requests.get(url,headers=headers2)
+    json_data = json.loads(p.text)
+    names = [item["Name"] for item in json_data["d"]["results"]]
+    file_uploaded = False
+    for file_name in names:
+        url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/GetFolderByServerRelativeUrl('Document Library')/Files('{file_name}')/ListItemAllFields/?$select=File_Moved_to_GCS_{env_name}"
+        p = requests.get(url,headers=headers2)
+        data=p.json()["d"]
+        key = f"File_Moved_to_GCS_{env_name}"
+        status = data.get(key, "")
+        if str(status).lower() == "false":
+            query = f"""
+            SELECT FlatFile_Name
+            FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_master_in_table`
+            WHERE lower(FlatFile_Name)=lower('{file_name}')
+            """
+    # Execute the query and get the FlatFile_Name to be uploaded
+            df = client.query(query).to_dataframe()
+            flat_file_name = df[['FlatFile_Name']].values.tolist()
+            if not flat_file_name:
+                Error="Error: "+"Incorrect file name:" + file_name + ". Not uploading this file!!!"
+                print(Error)
+                update_sharepoint(Error, file_name, env_name)
+                continue
+            flat_file_name=flat_file_name[0][0]
+            print("Expected file name: ", flat_file_name, ", Uploaded file name: ", file_name)
+            print("File Name matches!" if flat_file_name == file_name else "File name does not match, Renaming File to: " + flat_file_name)
+            file_uploaded = True
+            output_file_path = f'gs://prd-65343-datalake-bd-196865-entscoreca-entscorecard-raw/{flat_file_name}'
+            blob_name = os.path.basename(output_file_path)
+            print(blob_name)
+            storage_client = storage.Client()
+            bucket = storage_client.get_bucket('prd-65343-datalake-bd-196865-entscoreca-entscorecard-raw')
+
+        # Check if the blob (file) already exists in the bucket
+            print(f"Checking existence of blob: {blob_name} in bucket: {bucket.name}")
+            try:
+                    if bucket.blob(blob_name).exists():
+                        blob=bucket.blob(blob_name)
+                        # If the file already exists, rename the old file before uploading the new one
+                        timestamp = datetime.now().strftime("%Y%m%d%H%M")
+                        renamed_blob_name = f"Archive/{blob_name}_{timestamp}_sre"
+                        # Copy the blob to a new blob with the new name
+                        new_blob = bucket.copy_blob(blob, bucket, renamed_blob_name)
+                        # Delete the old blob
+                        blob.delete()
+                        #bucket.rename_blob(blob_name, renamed_blob_name)
+                        print(f"Renamed existing file '{blob_name}' to '{renamed_blob_name}'.")
+                        #print(f"Blob: {blob_name} does not exist in bucket: {bucket.name}")
+            # Upload the new file to the bucket
+                    print("Uploading file", file_name, " in ",bucket.name)
+                    url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/GetFolderByServerRelativeUrl('Document Library')/Files('{file_name}')/$value"
+                    p = requests.get(url,headers=headers2)
+                    df = pd.read_csv(StringIO(p.text))        
+                    df.to_csv(output_file_path,index=False)
+                    print("File Uploaded to GCS!")
+            except Exception as Error:
+                    print(f"An error occurred while uploading the file: {Error}")
+                    update_sharepoint(Error, file_name, env_name)
+                    return str(Error)
+            if env_name == 'UAT':
+                datarefresh_details = f"""
+                
+                WITH cte1 AS (
+                        SELECT DataSourceKey FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_master_in_table` WHERE lower(FlatFile_Name) =lower('{file_name}') and Active_YN='Y'    
+                ),
+                cte AS (
+                    SELECT DataProcessSubProcessKey
+                    FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`  
+                    WHERE ProcessName = CONCAT('{env_name}', ' - Source data Readiness') AND SubprocessName='Data Cleanup' AND DataSourceType = 'Flat File'
+                )
+                SELECT
+                    (select DataSourceKey from cte1) as DataSourceKey,
+                    (select DataProcessSubProcessKey from cte) as DataProcessSubprocessKey,
+                    'Completed' as Status,
+                    (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS StartTime,
+                    (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS EndTime,
+                    EXTRACT (month FROM current_date )  AS DataRefreshMonth,
+                    EXTRACT (year FROM current_date ) AS DataRefreshYear,
+                    'NA' AS DashboardRefreshFlag,
+                    (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) as CreatedTimeStamp,
+                    'system' AS CreatedBY,
+                    (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) as UpdatedTimeStamp,
+                    'system'  AS UpdatedBY,
+                    '' AS Comment,
+                    'Y' AS Active_YN
+                    """
+        
+                df = client.query(datarefresh_details).to_dataframe()
+                print("datarefresh_details: ",datarefresh_details)
+                json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+                parsed_json = json.loads(json_data_split)
+                key_values = parsed_json['data'][0]
+                value1 = key_values[0]
+                value2 = key_values[1]
+                value3 = key_values[2]
+                value4 = key_values[3]
+                value5 = key_values[4]
+                value6 = key_values[5]
+                value7 = key_values[6]
+                value8 = key_values[7]
+                value9 = key_values[8]
+                value10 = key_values[9]
+                value11 = key_values[10]
+                value12 = key_values[11]
+                value13 = key_values[12]
+                value14 = key_values[13]
+
+                table_names='196865_aen_perm_datarefresh_test_details'
+                table='196865_x005f_aen_x005f_perm_x005f_datarefresh_x005f_test_x005f_details'
+                data = {
+                    "__metadata": {"type": f"SP.Data.{table}ListItem"},
+                    "DataSourceKey": value1,
+                    "DataProcessSubprocessKey": value2,
+                    "Status":value3,
+                    "StartTime":value4,
+                    "EndTime":value5,
+                    "DataRefreshMonth": value6,
+                    "DataRefreshYear": value7,
+                    "DashboardRefreshFlag":value8,
+                    "CreatedTimeStamp": value9,
+                    "CreatedBY": value10,
+                    "UpdatedTimeStamp":value11,
+                    "UpdatedBY":value12,
+                    "Comment": value13,
+                    "Active_YN":value14
+        
+                } 
+                url = f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/Lists/getbytitle('{table_names}')/items"
+                p = requests.post(url, headers=headers2, json=data)
+                print(p)
+                print("Inserted data into Datarefresh table")
+            if file_uploaded:
+                Error=None
+                update_sharepoint(Error, file_name, env_name)
+
+    if not file_uploaded:
+        print("No new file to upload to GCS!")   
+    return 'Success'
+            
