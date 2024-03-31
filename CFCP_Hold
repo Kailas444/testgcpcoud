@@ -1,1 +1,118 @@
+from google.cloud import bigquery 
+import json 
+import pandas as pd   
+import requests
+from datetime import datetime, timezone, timedelta
+import functions_framework
+import requests
+from datetime import datetime, timezone
+import base64
+import google.auth.transport.requests
+import msal
+from io import StringIO
+from google.cloud import storage
+import os
+import sys
+@functions_framework.http
+def composerdata_http(request):
+    request_json = request.get_json(silent=True)
+    request_args = request.args
+
+    if request_json and 'name' in request_json:
+        name = request_json['name']
+    elif request_args and 'name' in request_args:
+        name = request_args['name']
+    else:
+        name = 'World'
+
+    # Access the additional message
+    if request_json and 'message' in request_json:
+        message = request_json['message']
+    else:
+        message = 'No message provided'
+
+    print(f'Received message: {message}')
+    # sre_datalake_project_id = cf_event.get_var('sre_datalake_project_id')
+
+    sre_datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    sre_database_in = 'entprep_196865_in'
+    database_in = 'entprep_196865_in'
+    datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    client = bigquery.Client()
+    env_name = 'PROD'
+    data1 = {
+        'grant_type':'client_credentials',
+        'resource': '00000003-0000-0ff1-ce00-000000000000/ts.accenture.com@e0793d39-0939-496d-b129-198edd916feb',
+        'client_id': 'be27f10d-572f-4d16-be88-2d88b0192ee7@e0793d39-0939-496d-b129-198edd916feb',
+        'client_secret': '6yfhkgp8ZxKti7WxPxVyrapcBNa5CXAuZF+fFOtw5wE=',
+    }
+    
+    headers1 = {
+        'Content-Type':'application/x-www-form-urlencoded'
+    }
+    url1 = "https://accounts.accesscontrol.windows.net/e0793d39-0939-496d-b129-198edd916feb/tokens/OAuth/2"
+    r1 = requests.post(url1, data=data1, headers=headers1)
+    json_data1 = json.loads(r1.text)
+    token = json_data1['access_token']
+    
+    headers2 = {
+        'Authorization': f"Bearer {token}",
+        'Accept':'application/json;odata=verbose',
+        'Content-Type': 'application/json;odata=verbose',
+        'If-Match':'*'
+    }
+    DashboardKey = f"""
+    
+        select distinct set_2.dashboardkey
+        from
+        --set 1:
+        (select distinct DataSourceKey FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_datarefresh_details_auto_in_table` d1 JOIN
+        (SELECT DataProcessSubprocessKey
+        FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`
+        WHERE ProcessName = CONCAT('PROD - Data Process')
+        AND SubProcessName = 'Perform Data Load'
+        ) AS s1 ON d1.DataProcessSubprocessKey = s1.DataProcessSubprocessKey and d1.Active_YN = 'Y'
+        ) set_1
+        JOIN
+        --set 2:
+        (SELECT distinct dashboardkey, datasourcekey
+        FROM
+        (SELECT dashboardkey, datasourcekey, QAStatus, DataProcessSubprocessKey, EndTime, ROW_NUMBER() OVER(PARTITION BY dashboardkey, datasourcekey ORDER BY EndTime DESC)
+        AS rn
+        FROM`{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_QADetails_in_table`
+        where Active_YN='Y'
+        )
+        WHERE rn = 1 and QAStatus = 'QA Completed with Defects' and DataProcessSubprocessKey in
+        (select DataProcessSubProcessKey from`{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`
+        where ProcessName = 'UAT - SignOff Received from QA Team'and SubProcessName = 'QA Sign off Received'and Active_YN = 'Y')
+        ) set_2 On set_1.datasourcekey = set_2.datasourcekey
+
+        """
+    
+    df = client.query(DashboardKey).to_dataframe()
+    if len(df)<=0:
+        print("No Dashboard to put on HOLD.")
+        return ('Exitng the script...',200)
+    else:
+        keys=df['DashboardKey'].values.tolist()
+        print("DashboardKeys: ",keys)
+        for i in keys:
+            url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/web/lists/getbytitle('196865_aen_perm_dashboard_master')/items?$filter=DashboardKey eq {i}"
+            print(url)
+            p = requests.get(url, headers=headers2)
+            data = p.json()
+    # Check if the item with DashboardKey was found
+            ID = data['d']['results'][0]['Id']
+            data = {
+                            "__metadata": {"type": "SP.Data.196865_x005f_aen_x005f_perm_x005f_dashboard_x005f_masterListItem"},
+                            "Prod_Refresh_Onhold": "HOLD"
+                        }
+            url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/web/lists/getbytitle('196865_aen_perm_dashboard_master')/items({ID})"
+            print(url)
+            p = requests.patch(url, headers=headers2,json=data)
+            print(p)
+            print("Dashboard HOLD Status Updated in SP!")
+
+    return 'Success'
+            
 
