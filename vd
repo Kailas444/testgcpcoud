@@ -1,0 +1,23 @@
+import base64
+import os
+import glob
+import pandas as pd
+from google.cloud import bigquery
+	
+
+def bqtogcs_stg(self, event):
+    
+    client = bigquery.Client(project='#{GCP_PROJECT_ID}#')
+    qry1 = f"""select SourceId,ClientNm,ClientNm1,StreetAddr,StreetAddr1,StreetAddr2,CityCd,PostalCd,CountryCd,StateCd,DistrictCd,CreationDt,GroupCd,BlockingCd,LanguageCd,IndustryCd,TaxJurisdicationNbr,VATNbr,TaxNbr1,TaxNbr2,TaxNbr3,TaxNbr4,TaxNbr5,UltimateMCCd,UltimateMCNm,ImmediateLevelMCCd,InmediateLevelMCNm,SourceCd from `npd-196865-xddpcds-bd-d954b983.dlt_xddp_mdm_staging_196865.client_stg`"""
+    query_job1 = client.query(qry1).to_dataframe()
+    query_job1.rename(columns={"SourceId": "Customer","ClientNm": "Name 1","ClientNm1": "Name 2","StreetAddr": "Street 1","StreetAddr1": "Street 2","StreetAddr2": "Street 3","CityCd": "City","PostalCd": "PostalCode","CountryCd": "Cty(Country Code)","StateCd": "State/Province","DistrictCd": "District","CreationDt": "Creation Date","GroupCd": "Group","BlockingCd": "Blocking","LanguageCd": "Language","IndustryCd": "Indcode 1","TaxJurisdicationNbr": "Tax Jur","VATNbr": "VAT Registration No","TaxNbr1": "Tax Number 1","TaxNbr2": "Tax Number 2","TaxNbr3": "Tax Number 3","TaxNbr4": "Tax Number 4","TaxNbr5": "Tax Number 5","UltimateMCCd": "Ultimate MC","UltimateMCNm": "Ultimate MC Name","ImmediateLevelMCCd": "Immediate Level MC","InmediateLevelMCNm": "Inmediate Leval MC Name","SourceCd": "Vendor/Customer"}, inplace=True)    query_job1.to_csv("gs://npd-196865-xddpcds-bd-trigger-bucket-bqtogcs-stg-npd/Accenture_Client_File.csv", index=False)
+    qry2 = f"""select SourceId,PartnerNm,PartnerNm1,PartnerNm2,PartnerNm3,StreetAddr,StreetAddr1,StreetAddr2,StreetAddr3,StreetAddr4,PostalCd,CityCd,CountryCd,StateCd,POBox,POBox1,IndustryCd,SpendCategoryGroupCd,BusinessRegistrationType,BusinessRegistrationTypeDesc,TaxNbr,CompanyCd,SourceCd from `npd-196865-xddpcds-bd-d954b983.dlt_xddp_mdm_staging_196865.partner_stg`"""
+    query_job2 = client.query(qry2).to_dataframe()
+    query_job2.rename(columns={"SourceId": "Partner","PartnerNm": "Partner Name (1.01)","PartnerNm1": "Partner Name2 (1.01)","PartnerNm2": "Partner Name3 (1.03)","PartnerNm3": "Partner Name4 (1.04)","StreetAddr": "Street Address (1.07)","StreetAddr1": "Street Address2 (1.08)","StreetAddr2": "Street Address3 (1.09)","StreetAddr3": "Street Address4","StreetAddr4": "Street Address5","PostalCd": "Zip/Post Code (1.15)","CityCd": "City (1.11)","CountryCd": "Country (1.14)","StateCd": "State/Region/ Province (1.12)","POBox": "PO Box (1.1)","POBox1": "PO Box Zip Code (1.16)","IndustryCd": "Industry Code","SpendCategoryGroupCd": "Spend Category Group (RQ15)","BusinessRegistrationType": "Business Registration Type","BusinessRegistrationTypeDesc": "Business Registration Type Description (2.02)","TaxNbr": "Business Reg # / Tax ID # (2.03)","CompanyCd": "Company Code (RQ6)","SourceCd": "Vendor / Client"}, inplace=True)
+    query_job2.to_csv("gs://npd-196865-xddpcds-bd-trigger-bucket-bqtogcs-stg-npd/Accenture_Partner_File.csv", index=False)
+    qry3 = f"""select SourceId,SupplierNm,SupplierNm1,SupplierNm2,SupplierNm3,StreetAddr,StreetAddr1,StreetAddr2,StreetAddr3,StreetAddr4,PostalCd,CityCd,CountryCd,StateCd,POBox,POBox1,IndustryCd,SpendCategoryGroupCd,BusinessRegistrationType,BusinessRegistrationTypeDesc,TaxNbr,CompanyCd,SourceCd from `npd-196865-xddpcds-bd-d954b983.dlt_xddp_mdm_staging_196865.supplier_stg`"""
+    query_job3 = client.query(qry3).to_dataframe()
+    query_job3.rename(columns={"SourceId": "SAP ID","SupplierNm": "Supplier Name (1.01)","SupplierNm1": "Supplier Name2 (1.01)","SupplierNm2": "Supplier Name3 (1.03)","SupplierNm3": "Supplier Name4 (1.04)","StreetAddr": "Street Address (1.07)","StreetAddr1": "Street Address2 (1.08)","StreetAddr2": "Street Address3 (1.09)","StreetAddr3": "Street Address4","StreetAddr4": "Street Address5","PostalCd": "Zip/Post Code (1.15)","CityCd": "City (1.11)","CountryCd": "Country (1.14)","StateCd": "State/Region/ Province (1.12)","POBox": "PO Box (1.1)","POBox1": "PO Box Zip Code (1.16)","IndustryCd": "Industry Code","SpendCategoryGroupCd": "Spend Category Group (RQ15)","BusinessRegistrationType": "Business Registration Type","BusinessRegistrationTypeDesc": "Business Registration Type Description (2.02)","TaxNbr": "Business Reg # / Tax ID # (2.03)","CompanyCd": "Company Code (RQ6)","SourceCd": "Vendor / Client"}, inplace=True)
+    query_job3.to_csv("gs://npd-196865-xddpcds-bd-trigger-bucket-bqtogcs-stg-npd/Accenture_Supplier_File.csv", index=False)
+    client.close()
+
