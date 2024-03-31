@@ -1,0 +1,66 @@
+Has all the queries been run through the execution plan?
+
+Is there logic for handling NULL values?
+
+As far as possible, avoid nullable columns. Either make them mandatory or use a default value.
+
+
+Is LIKE clause used even when there are no wildcards?
+
+LIKE is generally used with wildcards.
+If you use LIKE without a wildcard on a NVARCHAR column that contains unicode data, no records will be returned even when present.
+
+
+Is ActiveYN column used when returning a master result set?
+Most of tables in DSM have a ActiveYN flag which indicates whether a record has been soft deleted or not. So in all your queries always use this column to fetch the result set, unless a requirement states otherwise
+
+
+Ensure column number is not used in Order By clause
+
+Do not use the column numbers in the ORDER BY clause as it impairs the readability of the SQL statement. Further, changing the order of columns in the SELECT list has no impact on the ORDER BY when the columns are referred by names instead of numbers
+
+IS UNION ALL used instead of UNION if duplicate rows are not a concern?
+
+The UNION ALL statement is much faster than UNION, because UNION ALL statement does not look for duplicate rows, and UNION statement does look for duplicate rows, whether or not they exist.
+
+
+Is count(1) used instead of count(*) for getting row count of a table?
+If you need to know the total table's row count use count(1) instead.
+
+Because SELECT COUNT(*) statement make a full table scan to return the total table's row count, it can take lots of time for the large table. 
+
+
+Is "If Exists" used to check whether there are any records?
+Use “EXISTS” instead of “COUNT(*)” when looking for the existence of one or more rows in a subquery.  “EXISTS” cancels the subquery once the first existence of a record is found, while “COUNT(*)” forces processing of the entire query.
+
+
+Is Distinct clause avoided wherever possible?
+
+Since using the DISTINCT clause will result in some performance degradation, you should use this clause only when it is necessary.
+
+
+Are User Defined Functions used?
+The scalar user-defined functions (UDFs) contain one or more Transact-SQL statements that can be used to encapsulate code for reuse. 
+Using UDFs can reduce network traffic.
+Note: Be careful when using UDF . If the required functionality can be achived by joining a table - join the table directly and also ensure that if paging is applied to result - Call the udf along with TSQL  only when you fetch the final result set to be shown for the page
+
+
+Is Truncate used instead of Delete?
+If you need to delete records in a table, try truncating instead of deleting. “TRUNCATE TABLE” removes all rows from a table without logging the individual row deletes. Also if there is an id column in a table and if delete is performed, the next time when we insert records the id's will start from where we left the last time. By truncate we can rid of this problem. But truncate cannot be used with filter condition hence truncate only when obsolete or transient tables are deleted
+
+
+Is "Is Null" used instead of "= Null"?
+
+If you need to retrieve records based on “null” values, use "is null" instead of "= null" in your where clause.
+"= null" will not return any rows. It is used only in assignment statements.
+
+
+Are explicit columns used in Select statements?
+
+Use explicit fields in your select statement, do not use "SELECT *". This technique results in less disk IO and less network traffic and hence better performance. Also when a table schema changes you may not get the results you expect, especially in cases where a stored procedure calls another one.
+
+
+Are the aliases for tables descriptive?
+
+If you are using aliases then pick descriptive names instead of A1 or B2
+
