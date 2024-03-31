@@ -1,0 +1,26 @@
+######### This function is being used to create a table entry based on file/message ingestion.#####
+###################################################################################################
+import base64
+import os
+import glob
+import pandas as pd
+from google.cloud import bigquery
+
+
+def #{CF_ENTRYPOINT}#(self, event):
+    # List all files in folder.
+    fileList = glob.glob('sql/*.sql')
+    print("My fileList",fileList)
+    sql_list=[]
+    for file in fileList:
+        f = open(file, encoding="utf-8")
+        sql_list.append(f.read())
+    print(sql_list)
+    client = bigquery.Client(project="#{GCP_PROJECT_ID}#")
+    for sql in sql_list:
+        print(sql)
+        query_job = client.query(sql)
+        results = query_job.result()
+    for row in results:
+        print(row)
+    client.close()
