@@ -1,0 +1,212 @@
+import functions_framework
+import requests
+from datetime import datetime, timezone
+from google.cloud import bigquery 
+import pandas as pd   
+import requests
+import json
+import base64
+import google.auth.transport.requests
+import msal
+from google.cloud import pubsub_v1
+import time
+@functions_framework.http
+def pbi_refresh_auto_http(request):
+    request_json = request.get_json(silent=True)
+    request_args = request.args
+
+    if request_json and 'name' in request_json:
+        name = request_json['name']
+    elif request_args and 'name' in request_args:
+        name = request_args['name']
+    else:
+        name = 'World'
+
+    # Access the additional message
+    if request_json and 'message' in request_json:
+        message = request_json['message']
+    else:
+        message = 'No message provided'
+
+    print(f'Received message: {message}')
+
+    # Assign the value of 'message' to DataFeedName
+    DataFeedName = message
+    sre_datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    sre_database_in = 'entprep_196865_in'
+    datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    database_in = 'ent_196865_in'
+    client = bigquery.Client()
+    env_name = 'PROD'
+   
+    # env_name = cf_event.get_var('env_name_value')
+    tenant_id = 'e0793d39-0939-496d-b129-198edd916feb'
+    authority_url = f'https://login.microsoftonline.com/{tenant_id}'
+    restapi_url = 'https://api.powerbi.com/v1.0/myorg/groups/'
+    client_id = 'fc196e85-ae28-4435-a590-29c5506330a5'
+
+    #add this code into app.config
+    Report_id=0
+    print(f'Report_id={Report_id}')
+    print('Start Program')
+    Business_Flag_Pre='NA'
+    SRE_Flag_Pre='NA'
+    Switch_Flag_YN='NA'
+    Business_Flag_Post='NA'
+    client = bigquery.Client()
+    username = 'A196865DIRPpbiauto@accenture.com'
+    password = 'XT_BchDdBDji18I}o{os'
+    scope = ['https://analysis.windows.net/powerbi/api/.default']
+
+    # end of create separate library ---> 
+    app = msal.PublicClientApplication(client_id, authority=authority_url)
+    result = app.acquire_token_by_username_password(username=username, password=password, scopes=scope)
+    if 'access_token' not in result:
+        print ('Failed to obtain access token')
+    access_token = result['access_token']
+    print(result)
+    header = {'Authorization': f'Bearer {access_token}', 'Accept': 'application/json', 'Content-Type': 'application/json'}
+    env_name='PROD'
+    hold_status = f"{env_name}_Refresh_Onhold"
+    print(hold_status)
+    #remove env_name1 before transfer into UAT and Prod
+    print('Start')
+    client = bigquery.Client()
+   
+    dashboardlist = f"""
+
+         select * from
+        (
+        select distinct DashboardKey from
+                    (
+                    --Set 1:
+                    select distinct DataSourceKey from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_datarefresh_details_auto_in_table` A where DataProcesssubprocesskey in (select DataProcessSubProcessKey  from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table` where ProcessName = CONCAT('{env_name}',' - Data Process') and SubProcessName = 'Perform Data Sanity Check') and
+                    DataSourceKey Not In (select distinct Datasourcekey from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_datarefresh_details_auto_in_table` A where A.Active_YN = 'Y' and DataProcesssubprocesskey in (select DataProcessSubprocessKey from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table` where ProcessName = CONCAT('{env_name}',' - PBI Refresh') and SubProcessName = 'Perform PBI Refresh') and Status='Completed') and Active_YN='Y' and Status='Completed'
+                    ) Set_1 inner join
+                    --Set 2:
+                    (select distinct X.datasourcekey, X.dashboardkey from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_dashboard_mapping_in_table` X inner join `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table` Y  on x.datasourcekey = y.datasourcekey and y.Active_YN = 'Y'
+                    WHERE  
+                    X.Active_YN='Y' and
+                    concat(X.datasourcekey, X.dashboardkey) NOT IN (
+                                                                select distinct concat(DataSourceKey, DashboardKey)
+                                                                from `{datalake_project_id}.{database_in}.196865_aen_perm_dashboardrefresh_details_auto_in_table` where datasourcekey = X.DataSourceKey and Active_YN='Y'
+                                                            )
+                    ) Set_2 ON Set_1.DataSourceKey = Set_2.DataSourceKey
+                    Where DashboardKey not in (
+                    select distinct dashboardkey from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_datarefresh_details_auto_in_table` A, `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_dashboard_mapping_in_table` B where DataProcesssubprocesskey in (select DataProcessSubProcessKey  from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table` where ProcessName = CONCAT('{env_name}',' - Data Process') and SubProcessName = 'Perform Data Sanity Check') and A.Status='Failed' and A.Active_YN='Y' and A.Datasourcekey = B.DataSourcekey and B.Active_YN = 'Y'
+                    ))a
+                where DashboardKey Not in(
+                select DashboardKey from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dashboard_master_in_table` 
+                where {hold_status}='HOLD')
+ 
+    """
+    print('dashboard=', dashboardlist)
+    df = client.query(dashboardlist).to_dataframe()
+    print('df=',df)
+    if df.empty:
+        print(f'No data found for DataSourceKey=')
+        return ('Success...',200)
+    print('hello')
+    dashboard = df['DashboardKey'].values.tolist()
+    DashboardKey = dashboard[0]
+    print(f'DashboardKey={DashboardKey}')
+    
+   
+
+    # datasource1=[153,133,127,13] 
+    for i in range (0,len(dashboard)):
+        #Add cloumn name Active_YN='Y
+        DashboardKey = dashboard[i]
+        print('DashboardKey=', DashboardKey)
+        col_dataset_id='Dataset_id_'+ env_name
+        col_workspace_id='Workspace_id_'+ env_name
+        print(f'col_dataset_id={col_dataset_id}') 
+        print(f'col_workspace_id={col_workspace_id}')     
+        query_param=f'''SELECT {col_workspace_id}, {col_dataset_id} 
+        FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dashboard_master_in_table` 
+        WHERE DashboardKey={DashboardKey}'''
+
+        print('query_param=', query_param)
+        df = client.query(query_param).to_dataframe()
+        column_data_types = df.dtypes
+        print(df)
+        json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+        parsed_json = json.loads(json_data_split)
+        key_values = parsed_json['data'][0]
+        workspace_id = key_values[0]
+        dataset_id = key_values[1]
+        print(f'workspace_id={workspace_id}')
+        print(f'dataset_id={dataset_id}')
+        print(workspace_id,dataset_id) #value workspace_id and datasetId
+        # Get refresh history
+        refresh_history_url = f'{restapi_url}{workspace_id}/datasets/{dataset_id}/refreshes?$top=1'
+        print(f'refresh_history_url={refresh_history_url}')
+        refresh_request = requests.get(url=refresh_history_url, headers=header)
+        history_data = refresh_request.json()
+        print(f'history_data={history_data}')
+        #print(history_data)
+
+
+        history_data = refresh_request.json()
+        
+
+        for i in range(0,1):
+                    print(f'i={i}')
+                    most_recent_refresh = history_data['value'][i]
+                    print('most_recent_refresh=',most_recent_refresh)
+                    print('most_recent_refresh_status=',most_recent_refresh['status'])
+                    if most_recent_refresh['status'] =='Unknown':
+                        print('Do nothing')
+                        print('Do not doing anything=')
+                    else:
+                        print('PBI is running started=')
+
+                        result = app.acquire_token_by_username_password(username=username,password=password,scopes=scope)
+                        # dataset_to_refresh=''
+                        if "access_token" in result:
+                            # Successfully acquired an access token
+                            access_token = result["access_token"]
+                        else:
+                            # Something went wrong
+                            print("Authentication failed:", result.get("error"))
+                            print("Error description:", result.get("error_description"))
+
+
+                        headers = {
+                            "Content-Type": "application/json",
+                            "Accept" : "application/json",
+                            "Authorization": f"Bearer {access_token}"
+                        }
+
+                        # Define the API endpoint
+
+        
+
+                        groups_request_url_ds = "https://api.powerbi.com/v1.0/myorg/datasets/" + dataset_id +"/refreshes"
+                        refresh_history_url_ds = "https://api.powerbi.com/v1.0/myorg/datasets/" + dataset_id +"/refreshes"
+
+                        groups_request_ds = requests.post(url=groups_request_url_ds, headers=headers)
+
+                        # Check if refresh got triggered. If it is triggered, then check the status for every 3 minutes. else, fail the pipeline. 
+                        if groups_request_ds.status_code == 202:
+                            print("-----------------------------------------------------------------")
+                            print("Dataset refresh successfully triggered")
+                            print("-----------------------------------------------------------------")
+                            print(groups_request_ds)
+                            time.sleep(60)
+                            dataset_dict = {}
+                            refresh_history_url_ds = "https://api.powerbi.com/v1.0/myorg/datasets/" + dataset_id +"/refreshes"
+                            refresh_request_ds = requests.get(url=refresh_history_url_ds, headers=headers)
+                            history_data_ds = refresh_request_ds.json()
+                            if 'value' in history_data_ds:
+                                dataset_dict[dataset_id] = history_data_ds['value'][0]
+                            else:
+                                dataset_dict[dataset_id] = "API_Failed"
+
+                            
+
+
+
+    return ('Success...',200)
+   
+    # Perform further actions within pre_execute if needed
