@@ -1,0 +1,316 @@
+from google.cloud import bigquery 
+import json 
+import pandas as pd   
+import requests
+from datetime import datetime, timezone, timedelta
+import functions_framework
+import requests
+from datetime import datetime, timezone
+import base64
+import google.auth.transport.requests
+import msal
+@functions_framework.http
+def sptobq_http(request):
+    request_json = request.get_json(silent=True)
+    request_args = request.args
+
+    if request_json and 'name' in request_json:
+        name = request_json['name']
+    elif request_args and 'name' in request_args:
+        name = request_args['name']
+    else:
+        name = 'World'
+
+    # Access the additional message
+    if request_json and 'message' in request_json:
+        message = request_json['message']
+    else:
+        message = 'No message provided'
+
+    print(f'Received message: {message}')
+    # sre_datalake_project_id = cf_event.get_var('sre_datalake_project_id')
+    
+    # sre_database_in = cf_event.get_var('sre_database_in')
+    # datalake_project_id = cf_event.get_var('datalake_project_id')
+    # database_in = cf_event.get_var('database_in')
+    #hardcoded project and env parameters
+    sre_datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    sre_database_in = 'entprep_196865_in'
+    database_in = 'ent_196865_in'
+    datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    client = bigquery.Client()
+    # env_name = cf_event.get_var('env_name_value')
+    env_name='PROD'
+    #remove env_name1 before transfer into UAT and Prod
+    print('Start')
+    data1 = {
+        'grant_type':'client_credentials',
+        'resource': '00000003-0000-0ff1-ce00-000000000000/ts.accenture.com@e0793d39-0939-496d-b129-198edd916feb',
+        'client_id': 'be27f10d-572f-4d16-be88-2d88b0192ee7@e0793d39-0939-496d-b129-198edd916feb',
+        'client_secret': '6yfhkgp8ZxKti7WxPxVyrapcBNa5CXAuZF+fFOtw5wE=',
+    }
+
+    headers1 = {
+        'Content-Type':'application/x-www-form-urlencoded'
+    }
+
+    url1 = "https://accounts.accesscontrol.windows.net/e0793d39-0939-496d-b129-198edd916feb/tokens/OAuth/2"
+    r1 = requests.post(url1, data=data1, headers=headers1)
+    json_data1 = json.loads(r1.text)
+    token = json_data1['access_token']
+
+    headers2 = {
+        'Authorization': f"Bearer {token}",
+        'Accept':'application/json;odata=verbose',
+        'Content-Type': 'application/json;odata=verbose',
+        'If-Match':'*'
+    }
+    print('Got Token')
+
+    '''
+    Get Last Run Time here
+    '''
+    ctrl_url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/Lists/getbytitle('ControlTable')/items?$select=Title,LastRunTime,ID,BQ_Table_Name"
+    r3=requests.get(ctrl_url,headers=headers2)
+    lists_data2 = r3.json()['d']['results']
+# Iterate through the lists_data and append rows to the DataFrame
+    print('Getting LastRunTime from Control Table')
+    BQ_Modified = pd.DataFrame(columns=['Title', 'LastRunTime','ID','BQ_Table_Name'])
+    for list_info in lists_data2:
+                        Title = list_info['Title']
+                        LastRunTime= list_info['LastRunTime']
+                        ID= list_info['ID']
+                        BQ_Table_Name= list_info['BQ_Table_Name']
+                        #print(f"Title: {table_name}, LastRunTime: {last_runtime}")
+                        row_data={'Title': Title, 'LastRunTime': LastRunTime, 'ID':ID, 'BQ_Table_Name':BQ_Table_Name}
+                        #print(row_data)                 
+                        BQ_Modified = BQ_Modified._append(row_data, ignore_index=True)
+
+    #print(BQ_Modified)
+    '''NEWLY ADDED ENV LOGIC CODE'''
+    skip_tables = ["196865_aen_perm_dashboard_master",
+                "196865_aen_perm_data_source_dashboard_mapping",
+                "196865_aen_perm_data_source_monthly",
+                "196865_aen_perm_data_source_master",
+                "196865_aen_perm_dashboard_poc_master",
+                "196865_aen_perm_dataprocess_subprocess_master"]
+    #for PROD: skipping master tables and tables with _UAT in the name
+    if env_name == 'PROD':
+        print("Not processing the following tables in PROD:", skip_tables)
+        BQ_Modified = BQ_Modified[~BQ_Modified['Title'].isin(skip_tables)]
+        BQ_Modified = BQ_Modified[~BQ_Modified['BQ_Table_Name'].str.contains('_UAT')]
+    if env_name == 'UAT':
+        BQ_Modified = BQ_Modified[~BQ_Modified['BQ_Table_Name'].str.contains('_PROD')]
+        print(BQ_Modified)
+    '''NEWLY ADDED ENV LOGIC ENDS'''
+    NewLastRunTime = datetime.utcnow()
+    NewLastRunTime = NewLastRunTime.strftime("%Y-%m-%d %H:%M:%S")
+    print("NewLastRunTime:", NewLastRunTime)
+    
+    Table_count = BQ_Modified[['Title','ID','LastRunTime']].values.tolist()
+    print('Table_count',Table_count)
+    #Title_in=Title+'_in_table'
+    print(len(Table_count))
+    index=0
+    print('index',index)
+    while index < len(Table_count):
+            table_names = Table_count[index][0]
+            ID = Table_count[index][1]
+            LastRunTime = Table_count[index][2]
+            #LastRunTime = '2023-11-28 12:49:41'
+            print("table_names",table_names,'ID',ID)
+            encoded_list_name = requests.utils.quote(table_names, safe='')
+            url = f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/Lists/getbytitle('{encoded_list_name}')/items?$filter=Modified ge '{LastRunTime}'& $top=1000"
+            #url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/AutomationDev/Lists/196865_aen_perm_dashboard_master_newlist/AllItems.aspx"
+            print(url)
+            r2 = requests.get(url,headers=headers2)
+            print('Getting data from list...')
+            json_data = r2.json()
+            json_data = json.loads(r2.text)
+            results = json_data.get('d', {}).get('results', []) 
+            if len(results) <=0:  
+                print('Stop if there is no record for table')                
+                index +=1           
+                continue
+            else:
+                print("After exit")
+                print('Got data...')
+                if table_names=='196865_aen_perm_dashboard_master':
+                    print('196865_aen_perm_dashboard_master')
+                    #columns= ['DashboardKey', 'DashboardName', 'Active_YN','Workspace_id_DEV', 'Dataset_id_DEV', 'Workspace_id_UAT','Dataset_id_UAT', 'Workspace_id_PROD', 'Dataset_id_PROD','CreatedTimeStamp', 'CreatedBY', 'UpdatedTimeStamp','UpdatedBY', 'Comment']
+                    columns=['DashboardKey', 'DashboardName', 'Active_YN', 'Workspace_id_DEV', 'Dataset_id_DEV', 'Workspace_id_UAT', 'Dataset_id_UAT', 'Workspace_id_PROD', 'Dataset_id_PROD', 'Report_id', 'Blue_Report_id', 'Green_Report_id', 'Blue_Workspace_id_UAT', 'Blue_Dataset_id_UAT', 'Green_Workspace_id_UAT','Green_Dataset_id_UAT','Blue_Workspace_id_PROD', 'Blue_Dataset_id_PROD', 'Green_Workspace_id_PROD', 'Green_Dataset_id_PROD', 'ReportName', 'ReportRoute', 'CreatedTimeStamp', 'CreatedBY', 'UpdatedTimeStamp', 'UpdatedBY', 'Comment','UAT_Refresh_Onhold','Prod_Refresh_Onhold']
+                    key='DashboardKey'
+                elif table_names=='196865_aen_perm_data_source_dashboard_mapping':
+                    print('196865_aen_perm_data_source_dashboard_mapping')
+                    columns=['DataSourceKey','DashboardKey','CreatedTimeStamp','CreatedBY','UpdatedTimeStamp', 'UpdatedBY','Comment','Active_YN']
+                    key='DataSourceKey'
+                    key2='DashboardKey'
+                elif table_names=='196865_aen_perm_data_source_monthly':
+                    print('196865_aen_perm_data_source_monthly')
+                    columns=['DataSourceKey','DataSourceType','SourceFeedName','DataFeedName','ActivitiesTesting','DataFeedType','Frequency','PlannedSourceSchedule','InSREScope_YN','InTestingScope_YN','DataSourceOwnerUS','DataSourceOwnerAPAC','Active_YN','PlannedSourceCalendarDate','RevisedSourceCalendarDate','ActualSourceReceivedDate','Month','Year','CreatedTimeStamp','CreatedBY','UpdatedTimeStamp','UpdatedBY','Comment','MMBSource','RefreshMode','OldContainerName','NewContainerName','Dependencies','UAT_Refresh_Onhold','Prod_Refresh_Onhold']
+                    key='DataSourceKey'
+                elif table_names=='196865_aen_perm_data_source_master':
+                    print('196865_aen_perm_data_source_master')
+                    columns=['DataSourceKey','DataSourceType','SourceFeedName','DataFeedName','ActivitiesTesting','DataFeedType','Frequency','PlannedSourceSchedule','InSREScope_YN','InTestingScope_YN','DataSourceOwnerUS','DataSourceOwnerAPAC','Active_YN','CreatedTimeStamp','CreatedBY','UpdatedTimeStamp','UpdatedBY','Comment','MMBSource','RefreshMode','OldContainerName','NewContainerName','Dependencies','FlatFile_Name','UAT_Refresh_Onhold','Prod_Refresh_Onhold']
+                    key='DataSourceKey'
+                elif table_names=='196865_aen_perm_dashboard_poc_master':
+                    print('196865_aen_perm_dashboard_poc_master')
+                    columns=['DashboardKey','ProductManagers','PBIOnshore','DEOnshore','TesterOnshore','PBIOffshore','DEOffshore','TesterOffshore','AdditonalContactOffshore','CreatedTimeStamp','CreatedBY','UpdatedTimeStamp','UpdatedBY','Comment','Active_YN','NotificationContacts']
+                    key='DashboardKey'  
+                elif table_names=='196865_aen_perm_dashboardrefresh_details':
+                    print('196865_aen_perm_dashboardrefresh_details')
+                    columns=['DashboardRefreshDetailKey','DataSourceKey','DashboardKey','DataProcessSubprocessKey','Status','StartTime','EndTime','DataRefreshMonth','DataRefreshYear','CreatedTimeStamp','CreatedBY','UpdatedTimeStamp','UpdatedBY','Comment','Active_YN','Business_Flag_Pre', 'SRE_Flag_Pre', 'Switch_Flag_YN', 'Report_id', 'Business_Flag_Post']
+                    #columns=['DashboardRefreshDetailKey','DataSourceKey','DashboardKey','DataProcessSubprocessKey','Status','StartTime','EndTime','DataRefreshMonth','DataRefreshYear','CreatedTimeStamp','CreatedBY','UpdatedTimeStamp','UpdatedBY','Comment','Active_YN','BlueGreenFlag']
+                    key='DataSourceKey'
+                    key4='DashboardKey'    
+                    key5='DataProcessSubprocessKey'                               
+                elif table_names=='196865_aen_perm_datarefresh_details':
+                    print('196865_aen_perm_datarefresh_details')
+                    columns=['ID','DataSourceKey','DataProcessSubprocessKey','Status','StartTime','EndTime','DataRefreshMonth','DataRefreshYear','DashboardRefreshFlag','CreatedTimeStamp','CreatedBY','UpdatedTimeStamp','UpdatedBY','Comment','Active_YN','Modified','Created','DataRefreshActivityDetailKey']
+                    key='ID'                           
+                elif table_names=='196865_aen_perm_dataprocess_subprocess_master':
+                    print('196865_aen_perm_dataprocess_subprocess_master')
+                    columns=['DataProcessSubprocessKey','ProcessName','SubProcessName','DataSourceType','SubprocessSequenceNumber','Active_YN','CreatedTimeStamp','CreatedBY','UpdatedTimeStamp','UpdatedBY','Comment']
+                    key='DataProcessSubprocessKey'
+                elif table_names=='QADetails':
+                    print('QADetails')
+                    columns=['ID','DataSourceKey','DashboardRefreshDetailKey','DashboardKey','DataProcessSubprocessKey','QAStatus','StartTime','EndTime','Month','Year','QAComments','Comment','CreatedTimeStamp','CreatedBY','UpdatedTimeStamp','UpdatedBY','Active_YN','Modified','Created','Report_id','Business_Flag_Pre','Switch_Flag_YN']
+                    key='ID'
+
+                    
+                SP_Current = pd.DataFrame(columns=columns) #to store current table values
+                for list_info in results:
+                    row_data = {}
+                    for column_name in SP_Current.columns:
+                        row_data[column_name] = list_info.get(column_name)
+                    SP_Current = SP_Current._append(row_data, ignore_index=True)
+                SP_Current = SP_Current.fillna('')
+                print("SP_Current: ",SP_Current)
+                #print('SP')
+                for _, row in SP_Current.iterrows():
+                    column_values = {col: row[col] for col in columns}
+                    #print(column_values)
+                              # Handle timestamp columns
+                    timestamp_col = ['CreatedTimeStamp', 'UpdatedTimeStamp', 'PlannedSourceCalendarDate',
+                                    'RevisedSourceCalendarDate',
+                                    'ActualSourceReceivedDate', 'EffectiveFrom', 'EffectiveTill',
+                                    'HistoryCreatedTimeStamp', 'HistoryUpdatedTimeStamp','StartTime','EndTime','Modified','Created']
+
+                    for col in timestamp_col:
+                        if col in columns :
+                            column_values[col] = pd.to_datetime(column_values[col]).strftime('%Y-%m-%d %H:%M:%S') + ' UTC' if  column_values[col]!='' else None
+
+                    # Handle key columns
+                    key_columns = ['DashboardKey', 'DashboardRefreshDetailKey', 'DataSourceKey', 'Month', 'Year',
+                                'SubprocessSequenceNumber', 'DataRefreshMonth', 'DataRefreshYear',
+                                'DataProcessSubprocessKey', 'DataRefreshActivityDetailKey','Report_id','ID']
+
+                    for key_col in key_columns:
+                        if key_col in column_values:
+                            column_values[key_col] = int(column_values[key_col]) if pd.notna(column_values[key_col]) and column_values[key_col] != '' else 0
+                            value = column_values[key]
+                            #print('Key:', key, 'Value:', value)
+                            if table_names=='196865_aen_perm_data_source_dashboard_mapping':
+                                value2 = column_values[key2]
+                            if table_names=='196865_aen_perm_dashboardrefresh_details':
+                                value4 = column_values[key4]
+                                value5 = column_values[key5]
+                    for column_name, column_value in column_values.items():
+                        # Skip integer key columns
+                        if column_name in key_columns and isinstance(column_value, int):
+                            #print(f"Skipping {column_name} as it is an integer key column.")
+                            continue
+                        if column_value is None or column_value == '':
+                            #print(f"Skipping {column_name} as its value is None or an empty string.")
+                            continue
+                        if any(char in column_value for char in ('\n', "'")):
+                            modified_value = ' '.join(column_value.replace('\n', ' ').replace("'", "\\'").split())
+                            column_values[column_name] = modified_value
+                            print(f"Modified {column_name}:", modified_value)
+
+                    # Adjust Title_in based on table_names
+                    if table_names == '196865_aen_perm_datarefresh_details' or table_names=="196865_aen_perm_dashboardrefresh_details":
+                        Title_in = f"{table_names}_auto_in_table_{env_name}"
+                    elif table_names == 'QADetails':
+                        Title_in = f"196865_aen_perm_QADetails_in_table_{env_name}"
+                    else:
+                        Title_in = table_names + '_in_table'
+                    print('Title_in', Title_in)
+                
+
+                    # Constructing the WHERE condition based on table_names
+                    if table_names == '196865_aen_perm_data_source_dashboard_mapping':
+                        where_condition = f"{key}={value} and {key2}={value2}"
+                    elif table_names=='196865_aen_perm_dashboardrefresh_details':
+                       where_condition = f"{key}={value} and {key4}={value4} and {key5}={value5}" 
+                    else:
+                        where_condition = f"{key}={value}"
+
+                    # Constructing the SELECT query
+                    select_query = f"""
+                        SELECT COUNT(*)
+                        FROM `{sre_datalake_project_id}.{database_in}.{Title_in}`
+                        WHERE {where_condition}
+                    """
+                    print('select_query', select_query)
+
+                    # Executing the SELECT query
+                    query_job = client.query(select_query)
+                    result = query_job.result()
+                    count = next(result)[0]
+                    print("Count:", count)
+
+                    # Determining the action based on count
+                    if count == 0:
+                        print("into Insert")
+                        insert_query = f"""
+                            INSERT INTO `{datalake_project_id}.{database_in}.{Title_in}`
+                            ({', '.join([f"`{col}`" for col in columns])})
+                            VALUES
+                            ({', '.join([
+                                f"SAFE_CAST(NULL AS TIMESTAMP)" if col in timestamp_col and column_values[col] is None else
+                                f"SAFE_CAST('{column_values[col]}' AS TIMESTAMP)" if col in timestamp_col else
+                                f"{column_values[col]}" if col in key_columns else
+                                f"'{column_values[col]}'" if col not in key_columns and column_values[col] is not None and column_values[
+                                    col] != ' ' else
+                                "NULL"
+                                for col in columns
+                            ])})
+                        """
+                        print(insert_query)
+                        job = client.query(insert_query)
+                        job.result()
+
+                    elif count == 1:
+                        print("into Update")
+                        update_query = f"""
+                            UPDATE `{datalake_project_id}.{database_in}.{Title_in}`
+                            SET {', '.join([
+                                f"`{col}` = SAFE_CAST(NULL AS TIMESTAMP)" if col in timestamp_col and column_values[col] is None else
+                                f"`{col}` = SAFE_CAST('{column_values[col]}' AS TIMESTAMP)" if col in timestamp_col else
+                                f"`{col}` = SAFE_CAST({column_values[col]} AS INT64)" if col in key_columns else
+                                f"`{col}` = '{column_values[col]}'" if col not in key_columns and column_values[col] is not None and
+                                column_values[col] != ' ' else
+                                f"`{col}` = NULL"
+                                for col in columns
+                            ])}
+                            WHERE {where_condition}
+                        """
+                        print('update_query', update_query)
+                        job = client.query(update_query)
+                        job.result()
+
+                    else:
+                         print("Nothing to insert/update in table: ", Title_in)
+       
+                data = {
+                    "__metadata": {"type": "SP.Data.ControlTable0ListItem"},
+                    "LastRunTime": NewLastRunTime
+                }
+                url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/Lists/getbytitle('ControlTable')/items({ID})"
+                p = requests.patch(url, headers=headers2, json=data)
+                print(p)
+            index +=1
+            print('INDEX_LOOP',index)
+    return 'Success'
+            
