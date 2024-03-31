@@ -1,0 +1,40 @@
+functions-framework
+requests
+pandas
+msal
+datetime
+
+google-cloud-bigquery
+google-cloud-pubsub
+pandas
+gcsfs
+openpyxl
+xlwt
+pyarrow
+google-cloud-bigquery-storage
+google-cloud-storage
+prettytable==2.1.0
+# framework to check memory
+psutil
+
+#SharePoint
+Office365-REST-Python-Client
+
+#KMS
+google-cloud-kms
+
+#pymsteams for CFMSTeamsMessageOperator
+pymsteams
+
+#exchangelib for CFExchangeMailOperator
+exchangelib
+
+#for ml_starting_job_operator
+google-api-python-client-stubs
+
+#boto3 for CFGCS2S3Operator
+boto3
+
+google-cloud-secret-manager
+
+db_dtypes
