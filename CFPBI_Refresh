@@ -1,0 +1,611 @@
+import functions_framework
+import requests
+from datetime import datetime, timezone
+from google.cloud import bigquery 
+import pandas as pd   
+import requests
+import json
+import base64
+import google.auth.transport.requests
+import msal
+@functions_framework.http
+def composer_http(request):
+    request_json = request.get_json(silent=True)
+    request_args = request.args
+
+    if request_json and 'name' in request_json:
+        name = request_json['name']
+    elif request_args and 'name' in request_args:
+        name = request_args['name']
+    else:
+        name = 'World'
+
+    # Access the additional message
+    if request_json and 'message' in request_json:
+        message = request_json['message']
+    else:
+        message = 'No message provided'
+
+    print(f'Received message: {message}')
+
+    # Assign the value of 'message' to DataFeedName
+    DataFeedName = message
+    sre_datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    sre_database_in = 'entprep_196865_in'
+    database_in = 'ent_196865_in'
+    datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    client = bigquery.Client()
+    env_name = 'PROD'
+    data = {
+        'grant_type':'client_credentials',
+        'resource': '00000003-0000-0ff1-ce00-000000000000/ts.accenture.com@e0793d39-0939-496d-b129-198edd916feb', 
+        'client_id': 'be27f10d-572f-4d16-be88-2d88b0192ee7@e0793d39-0939-496d-b129-198edd916feb',
+        'client_secret': '6yfhkgp8ZxKti7WxPxVyrapcBNa5CXAuZF+fFOtw5wE=',
+    }
+
+    headers = {
+        'Content-Type':'application/x-www-form-urlencoded'
+    }
+
+    url = "https://accounts.accesscontrol.windows.net/e0793d39-0939-496d-b129-198edd916feb/tokens/OAuth/2"
+    r = requests.post(url, data=data, headers=headers)
+    print(r.text)
+    json_data = json.loads(r.text)
+    print(json_data)
+    print('Hello')
+    #print(json_data)
+    token_type = json_data['access_token']
+    print(token_type)
+    print('Hello')
+
+
+    headers = {
+        'Authorization': f"Bearer {token_type}",
+        'Accept':'application/json;odata=verbose',
+        'Content-Type': 'application/json;odata=verbose',
+        'If-Match':'*'
+    }
+
+    print("DataFeedName:",DataFeedName)
+           
+    Datasource1 = f''' SELECT a.DataFeedType,a.DataSourceKey FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table` a
+            inner join `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` b
+            on a.datasourcekey=b.datasourcekey and a.DataFeedName = '{DataFeedName}'
+            and a.Active_YN='Y' and b.Active_YN='Y' and b.status = 'Inprogress'
+            '''
+    
+    df = client.query(Datasource1).to_dataframe()
+    datafeed = df[['DataFeedType', 'DataSourceKey']].values.tolist()
+    print("Datasource",df)
+    if len(df)>=1:
+        print(f"Dataload already in Inprogress, skipping remaining code: {df}")
+        print("Datasource:",df)
+        raise Exception("An error occurred")
+        #return ('Dataload Inprogress',200)
+        
+    
+    Datasource=f'''
+            SELECT DataFeedType,DataSourceKey FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table` WHERE DataFeedName ='{DataFeedName}' and Active_YN='Y'    
+            '''
+    
+    df = client.query(Datasource).to_dataframe()
+    datafeed = df[['DataFeedType', 'DataSourceKey']].values.tolist()
+    DataFeedType = datafeed[0][0]
+    print('DataFeedType',DataFeedType)
+    DataSourceKey= datafeed[0][1]
+    print('DataSourceKey',DataSourceKey)
+    print(f'DataSourceKey={DataSourceKey}') 
+    Query1=f"""
+        select a.SanityCheckKey,a.Query from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_sanity_check_master_in_table` a
+        join `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_sanitycheck_mapping_in_table` b 
+        on a.SanityCheckKey=b.SanityCheckKey where b.DataSourceKey={DataSourceKey} and trim(upper(a.SanityCheckType)) ='PRELOAD' and trim(upper(a.Environment)) in ('{env_name}','ANY') and trim(upper(a.Active_YN))='Y'       
+        """
+    print(f'Printing dataframe df={Query1}')
+    df = client.query(Query1).to_dataframe()
+    Query_list = df[['SanityCheckKey', 'Query']].values.tolist()
+
+    if len(df)<=0:
+        print(f"No values are there stop sanity preload: {DataFeedName}")
+        print("DataFeedName:",DataFeedName)
+    
+        processname=f'''
+            SELECT DataFeedType FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table` WHERE DataFeedName ='{DataFeedName}' and Active_YN='Y'
+        '''
+
+        df = client.query(processname).to_dataframe()
+        json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+        parsed_json = json.loads(json_data_split)
+        key_values = parsed_json['data'][0]
+        DataFeedType = key_values[0]
+        print(f'DataFeedType={DataFeedType}') 
+
+
+
+
+        insert_dataload= f"""
+
+        INSERT INTO `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` (
+            DataRefreshActivityDetailKey, 
+            DataSourceKey,
+            DataProcessSubprocessKey,
+            Status,
+            StartTime,
+            DataRefreshMonth,
+            DataRefreshYear,
+            DashboardRefreshFlag,
+            CreatedTimeStamp,
+            CreatedBY,
+            UpdatedTimeStamp,
+            UpdatedBY,
+            Comment,
+            Active_YN
+        )
+            
+        WITH cte AS (
+            SELECT DataProcessSubProcessKey 
+            FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`  
+            WHERE ProcessName = CONCAT('{env_name}', ' - Data Process') AND SubProcessName = 'Perform Data Load' AND DataSourceType = '{DataFeedType}'
+        ),
+        cte2 AS (
+            SELECT DataSourceKey 
+            FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table`
+            WHERE DataFeedName = '{DataFeedName}'
+        )
+
+        SELECT
+            (SELECT IFNULL(MAX(DataRefreshActivityDetailKey),0) +1 FROM `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` ) as DataRefreshActivityDetailKey,
+            (select * from cte2) as DataSourceKey,
+            (select * from cte) as DataProcessSubprocessKey,
+            'Inprogress' as Status,
+            current_timestamp() as StartTime,
+            EXTRACT (month FROM current_date )  AS DataRefreshMonth,
+            EXTRACT (year FROM current_date ) AS DataRefreshYear,
+            'N' AS DashboardRefreshFlag,
+            current_timestamp() as CreatedTimeStamp,
+            'system' AS CreatedBY,
+            current_timestamp() as UpdatedTimeStamp,
+            'system'  AS UpdatedBY,
+            '' AS Comment,
+            'Y' AS Active_YN
+        """
+        job = client.query(insert_dataload)
+        job.result()  
+
+        data = {
+            'grant_type':'client_credentials',
+            'resource': '00000003-0000-0ff1-ce00-000000000000/ts.accenture.com@e0793d39-0939-496d-b129-198edd916feb', 
+            'client_id': 'be27f10d-572f-4d16-be88-2d88b0192ee7@e0793d39-0939-496d-b129-198edd916feb',
+            'client_secret': '6yfhkgp8ZxKti7WxPxVyrapcBNa5CXAuZF+fFOtw5wE=',
+        }
+
+        headers = {
+            'Content-Type':'application/x-www-form-urlencoded'
+        }
+
+        url = "https://accounts.accesscontrol.windows.net/e0793d39-0939-496d-b129-198edd916feb/tokens/OAuth/2"
+        r = requests.post(url, data=data, headers=headers)
+        print(r.text)
+        json_data = json.loads(r.text)
+        print(json_data)
+        print('Hello')
+        #print(json_data)
+        token_type = json_data['access_token']
+        print(token_type)
+        print('Hello')
+
+
+        headers = {
+            'Authorization': f"Bearer {token_type}",
+            'Accept':'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'If-Match':'*'
+        }
+
+        datarefresh_details = f"""
+                WITH cte AS (
+                SELECT DataProcessSubProcessKey 
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`  
+                WHERE ProcessName = CONCAT('{env_name}', ' - Data Process') AND SubProcessName = 'Perform Data Load' AND DataSourceType = '{DataFeedType}'
+                ),
+                cte2 AS (
+                SELECT DataSourceKey 
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table`
+                WHERE DataFeedName = '{DataFeedName}'
+                )
+
+                SELECT
+                (SELECT IFNULL(MAX(DataRefreshActivityDetailKey),0)  FROM `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` ) as DataRefreshActivityDetailKey,
+                (select * from cte2) as DataSourceKey,
+                (select * from cte) as DataProcessSubprocessKey,
+                'Inprogress' as Status,
+                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS StartTime,
+                EXTRACT (month FROM current_date )  AS DataRefreshMonth,
+                EXTRACT (year FROM current_date ) AS DataRefreshYear,
+                'N' AS DashboardRefreshFlag,
+                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS CreatedTimeStamp,
+                'system' AS CreatedBY,
+                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS UpdatedTimeStamp,
+                'system'  AS UpdatedBY,
+                '' AS Comment,
+                'Y' AS Active_YN
+        """
+
+        df = client.query(datarefresh_details).to_dataframe()
+        column_data_types = df.dtypes
+        print(df)
+        print('Start')
+        json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+        parsed_json = json.loads(json_data_split)
+        key_values = parsed_json['data'][0]
+        value1 = key_values[0]
+        value2 = key_values[1]
+        value3 = key_values[2]
+        value4 = key_values[3]
+        value5 = key_values[4]
+        value6 = key_values[5]
+        value7 = key_values[6]
+        value8 = key_values[7]
+        value9 = key_values[8]
+        value10 = key_values[9]
+        value11 = key_values[10]
+        value12 = key_values[11]
+        value13 = key_values[12]
+        value14 = key_values[13]
+
+
+
+        print(value1)
+        print(value2)
+        print(value3)
+        print(value4)
+        print(value5)
+        print(value6)
+        print(value7)
+        print(value8)
+        print(value9)
+        print(value10)
+        print(value11)
+        print(value12)
+        print(value13)
+        print(value14)
+
+        print('end')
+        table_names='196865_aen_perm_datarefresh_details'
+        table='196865aenpermdatarefreshdetails'
+        # encoded_list_name = requests.utils.quote(table_names, safe='')
+        data = {
+            "__metadata": {"type": f"SP.Data.{table}ListItem"},
+            "DataRefreshActivityDetailKey": value1,
+            "DataSourceKey": value2,
+            "DataProcessSubprocessKey": value3,
+            "Status":value4,
+            "StartTime":value5,
+            "DataRefreshMonth": value6,
+            "DataRefreshYear": value7,
+            "DashboardRefreshFlag":value8,
+            "CreatedTimeStamp": value9,
+            "CreatedBY": value10,
+            "UpdatedTimeStamp":value11,
+            "UpdatedBY":value12,
+            "Comment": value13,
+            "Active_YN":value14
+
+        }
+
+        url = f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/Lists/getbytitle('{table_names}')/items"
+        p = requests.post(url, headers=headers, json=data)
+        print(p)  
+              
+    else:
+        print('Sanity pre+insertdata')
+        list = []
+        for i in range(0,len(Query_list)):
+            
+            execute_query1= f'{Query_list[i][1]}'
+            print(f'execute_query1={execute_query1}')
+            SanityCheckKey=Query_list[i][0]
+            Query=Query_list[i][1]
+            print(f'SanityCheckKey={SanityCheckKey}')
+            # Query=Datasource[i][1]
+            execute_query=f"""
+            {Query}
+            """
+            print(f"sanitycheck_query: {execute_query}")
+            # job = client.query(execute_query)
+            # job.result()  
+            
+            df = client.query(execute_query).to_dataframe()
+            json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+            parsed_json = json.loads(json_data_split)
+            key_values = parsed_json['data'][0]
+            Status1 = key_values[0]
+            print(f'STATUS OF EACH QUERY={Status1}') 
+            #SanityCheckKey=SanityCheckKey[0]
+
+            insert_sanity_details= f"""
+
+            INSERT INTO `{datalake_project_id}.{database_in}.196865_aen_perm_sanity_check_details_in_table` (
+                SanityCheckKey,
+                DataSourceKey,
+                Status,
+                DataRefreshMonth,
+                DataRefreshYear,
+                CreatedTimeStamp,
+                CreatedBY,
+                UpdatedTimeStamp,
+                UpdatedBY,
+                Comment,
+                DataProcessSubprocessKey,
+                Active_YN
+            )
+            WITH cte AS (
+                SELECT DataProcessSubProcessKey 
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`  
+                WHERE ProcessName = CONCAT('{env_name}', ' - Data Process') AND SubProcessName = 'Perform Data Sanity Check' AND DataSourceType = '{DataFeedType}'
+                )
+            SELECT
+                {SanityCheckKey} as SanityCheckKey,
+                {DataSourceKey} as DataSourceKey,
+                '{Status1}' as Status,
+                EXTRACT (month FROM current_date )  AS DataRefreshMonth,
+                EXTRACT (year FROM current_date ) AS DataRefreshYear,
+                current_timestamp() as CreatedTimeStamp,
+                'system' AS CreatedBY,
+                current_timestamp() as UpdatedTimeStamp,
+                'system'  AS UpdatedBY,
+                ''  AS Comment,
+                (select * from cte) as DataProcessSubprocessKey,
+                'Y' as Active_YN
+                """
+            job = client.query(insert_sanity_details)
+            job.result()  
+            list.append(Status1)
+            sanitycheck_details = f"""
+            WITH cte AS (
+                SELECT DataProcessSubProcessKey 
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`  
+                WHERE ProcessName = CONCAT('{env_name}', ' - Data Process') AND SubProcessName = 'Perform Data Sanity Check' AND DataSourceType = '{DataFeedType}'
+                )
+                SELECT 
+                {SanityCheckKey} as SanityCheckKey,
+                {DataSourceKey} as DataSourceKey,
+                '{Status1}' as Status,
+                EXTRACT (month FROM current_date )  AS DataRefreshMonth,
+                EXTRACT (year FROM current_date ) AS DataRefreshYear,
+                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS CreatedTimeStamp,
+                'system' AS CreatedBY,
+                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) as UpdatedTimeStamp,
+                'system'  AS UpdatedBY,
+                ''  AS Comment,
+                (select * from cte) as DataProcessSubprocessKey,
+                'Y' as Active_YN
+            """
+
+            df = client.query(sanitycheck_details).to_dataframe()
+            column_data_types = df.dtypes
+            print(df)
+            print('Start')
+            json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+            parsed_json = json.loads(json_data_split)
+            key_values = parsed_json['data'][0]
+            value1 = key_values[0]
+            value2 = key_values[1]
+            value3 = key_values[2]
+            value4 = key_values[3]
+            value5 = key_values[4]
+            value6 = key_values[5]
+            value7 = key_values[6]
+            value8 = key_values[7]
+            value9 = key_values[8]
+            value10 = key_values[9]
+            value11 = key_values[10]
+            value12 = key_values[11]
+
+
+
+
+
+            print(value1)
+            print(value2)
+            print(value3)
+            print(value4)
+            print(value5)
+            print(value6)
+            print(value7)
+            print(value8)
+            print(value9)
+            print(value10)
+            print(value11)
+            print(value12)
+
+            print('end')
+            table_names='196865_aen_perm_sanity_check_details'
+            table='196865_x005f_aen_x005f_perm_x005f_sanity_x005f_check_x005f_details'
+            data = {
+                "__metadata": {"type": f"SP.Data.{table}ListItem"},
+                "SanityCheckKey": value1,
+                "DataSourceKey": value2,
+                "Status": value3,
+                "DataRefreshMonth":value4,
+                "DataRefreshYear":value5,
+                "CreatedTimeStamp": value6,
+                "CreatedBY": value7,
+                "UpdatedTimeStamp":value8,
+                "UpdatedBY": value9,
+                "Comment": value10,
+                "DataProcessSubprocessKey": value11,
+                "Active_YN": value12
+
+            }
+
+            url = f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/Lists/getbytitle('{table_names}')/items"
+            p = requests.post(url, headers=headers, json=data)
+            print(p)
+
+
+        # Perform further actions within pre_execute if needed
+
+        #remove env_name1 before transfer into UAT and Prod
+    
+        print(DataFeedName)
+        processname=f'''
+            SELECT DataFeedType FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table` WHERE DataFeedName ='{DataFeedName}' and Active_YN='Y'
+        '''
+
+        df = client.query(processname).to_dataframe()
+        json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+        parsed_json = json.loads(json_data_split)
+        key_values = parsed_json['data'][0]
+        DataFeedType = key_values[0]
+        print(f'DataFeedType={DataFeedType}') 
+
+
+
+
+        insert_dataload= f"""
+
+        INSERT INTO `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` (
+            DataRefreshActivityDetailKey, 
+            DataSourceKey,
+            DataProcessSubprocessKey,
+            Status,
+            StartTime,
+            DataRefreshMonth,
+            DataRefreshYear,
+            DashboardRefreshFlag,
+            CreatedTimeStamp,
+            CreatedBY,
+            UpdatedTimeStamp,
+            UpdatedBY,
+            Comment,
+            Active_YN
+        )
+            
+        WITH cte AS (
+            SELECT DataProcessSubProcessKey 
+            FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`  
+            WHERE ProcessName = CONCAT('{env_name}', ' - Data Process') AND SubProcessName = 'Perform Data Load' AND DataSourceType = '{DataFeedType}'
+        ),
+        cte2 AS (
+            SELECT DataSourceKey 
+            FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table`
+            WHERE DataFeedName = '{DataFeedName}'
+        )
+
+        SELECT
+            (SELECT IFNULL(MAX(DataRefreshActivityDetailKey),0) +1 FROM `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` ) as DataRefreshActivityDetailKey,
+            (select * from cte2) as DataSourceKey,
+            (select * from cte) as DataProcessSubprocessKey,
+            'Inprogress' as Status,
+            current_timestamp() as StartTime,
+            EXTRACT (month FROM current_date )  AS DataRefreshMonth,
+            EXTRACT (year FROM current_date ) AS DataRefreshYear,
+            'N' AS DashboardRefreshFlag,
+            current_timestamp() as CreatedTimeStamp,
+            'system' AS CreatedBY,
+            current_timestamp() as UpdatedTimeStamp,
+            'system'  AS UpdatedBY,
+            '' AS Comment,
+            'Y' AS Active_YN
+        """
+        job = client.query(insert_dataload)
+        job.result()  
+        
+        datarefresh_details = f"""
+                WITH cte AS (
+                SELECT DataProcessSubProcessKey 
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`  
+                WHERE ProcessName = CONCAT('{env_name}', ' - Data Process') AND SubProcessName = 'Perform Data Load' AND DataSourceType = '{DataFeedType}'
+                ),
+                cte2 AS (
+                SELECT DataSourceKey 
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table`
+                WHERE DataFeedName = '{DataFeedName}'
+                )
+
+                SELECT
+                (SELECT IFNULL(MAX(DataRefreshActivityDetailKey),0) FROM `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` ) as DataRefreshActivityDetailKey,
+                (select * from cte2) as DataSourceKey,
+                (select * from cte) as DataProcessSubprocessKey,
+                'Inprogress' as Status,
+                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS StartTime,
+                EXTRACT (month FROM current_date )  AS DataRefreshMonth,
+                EXTRACT (year FROM current_date ) AS DataRefreshYear,
+                'N' AS DashboardRefreshFlag,
+                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS CreatedTimeStamp,
+                'system' AS CreatedBY,
+                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS UpdatedTimeStamp,
+                'system'  AS UpdatedBY,
+                '' AS Comment,
+                'Y' AS Active_YN
+        """
+
+        df = client.query(datarefresh_details).to_dataframe()
+        column_data_types = df.dtypes
+        print(df)
+        print('Start')
+        json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+        parsed_json = json.loads(json_data_split)
+        key_values = parsed_json['data'][0]
+        value1 = key_values[0]
+        value2 = key_values[1]
+        value3 = key_values[2]
+        value4 = key_values[3]
+        value5 = key_values[4]
+        value6 = key_values[5]
+        value7 = key_values[6]
+        value8 = key_values[7]
+        value9 = key_values[8]
+        value10 = key_values[9]
+        value11 = key_values[10]
+        value12 = key_values[11]
+        value13 = key_values[12]
+        value14 = key_values[13]
+
+
+
+        print(value1)
+        print(value2)
+        print(value3)
+        print(value4)
+        print(value5)
+        print(value6)
+        print(value7)
+        print(value8)
+        print(value9)
+        print(value10)
+        print(value11)
+        print(value12)
+        print(value13)
+        print(value14)
+
+        print('end')
+        table_names='196865_aen_perm_datarefresh_details'
+        table='196865aenpermdatarefreshdetails'
+        # encoded_list_name = requests.utils.quote(table_names, safe='')
+        data = {
+            "__metadata": {"type": f"SP.Data.{table}ListItem"},
+            "DataRefreshActivityDetailKey": value1,
+            "DataSourceKey": value2,
+            "DataProcessSubprocessKey": value3,
+            "Status":value4,
+            "StartTime":value5,
+            "DataRefreshMonth": value6,
+            "DataRefreshYear": value7,
+            "DashboardRefreshFlag":value8,
+            "CreatedTimeStamp": value9,
+            "CreatedBY": value10,
+            "UpdatedTimeStamp":value11,
+            "UpdatedBY":value12,
+            "Comment": value13,
+            "Active_YN":value14
+
+        }
+
+        url = f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/Lists/getbytitle('{table_names}')/items"
+        p = requests.post(url, headers=headers, json=data)
+        print(p)
+    return ('Success...',200)  
+        # Rest of your code for processing data when df is not empty
+        # Access data from the DataFrame as needed
+    
