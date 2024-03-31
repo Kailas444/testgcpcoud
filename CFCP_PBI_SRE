@@ -1,0 +1,717 @@
+import os
+import functions_framework
+import requests
+from datetime import datetime, timezone
+from google.cloud import bigquery 
+import pandas as pd   
+import requests
+import json
+import base64
+import google.auth.transport.requests
+import msal
+@functions_framework.http
+def pbi_refresh_sre_http(request):
+    request_json = request.get_json(silent=True)
+    request_args = request.args
+
+    if request_json and 'name' in request_json:
+        name = request_json['name']
+    elif request_args and 'name' in request_args:
+        name = request_args['name']
+    else:
+        name = 'World'
+
+    # Access the additional message
+    if request_json and 'message' in request_json:
+        message = request_json['message']
+    else:
+        message = 'No message provided'
+
+    print(f'Received message: {message}')
+    # DataFeedName = message
+    sre_datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    sre_database_in = 'entprep_196865_in'
+    database_in = 'ent_196865_in'
+    datalake_project_id = 'prd-65343-datalake-bd-88394358'
+    client = bigquery.Client()
+    env_name = 'PROD'
+    BG_Config=0
+    print('BG_Config',BG_Config)
+    # Assign the value of 'message' to DataFeedName
+    # sre_datalake_project_id = cf_event.get_var('sre_datalake_project_id')
+    # sre_database_in = cf_event.get_var('sre_database_in')
+    # BG_Config=cf_event.get_var('BG_Config')
+    
+    api_url='https://valuenavigator.ciosit.accenture.com/api/BlueGreenToggle'
+    # datalake_project_id = cf_event.get_var('datalake_project_id')
+    # database_in = cf_event.get_var('database_in')
+    prev_startTime=''
+    prev_endTime=''
+    prev_status=''
+    start_time=''
+    end_time=''
+    refresh_status=''
+    print("INFO: ENtered into get_refresh_time function ---for debugging")
+   # create separate library ---> 
+    tenant_id = 'e0793d39-0939-496d-b129-198edd916feb'
+    authority_url = f'https://login.microsoftonline.com/{tenant_id}'
+    restapi_url = 'https://api.powerbi.com/v1.0/myorg/groups/'
+    client_id = 'fc196e85-ae28-4435-a590-29c5506330a5'
+
+    #add this code into app.config
+    Report_id=0
+    print(f'Report_id={Report_id}')
+    print('Start Program')
+    Business_Flag_Pre='NA'
+    SRE_Flag_Pre='NA'
+    Switch_Flag_YN='NA'
+    Business_Flag_Post='NA'
+    #BG_Config=0 #not live on Bluegreen #if not live then exiting cloumn name is chanage 
+     #live on Bluegreen
+    # Get authentication token
+    #client = bigquery.Client(project='prd-196865-entsrcdtes-0aae50a7')
+    client = bigquery.Client()
+    username = 'A196865DIRPpbiauto@accenture.com'
+    password = 'XT_BchDdBDji18I}o{os'
+    scope = ['https://analysis.windows.net/powerbi/api/.default']
+
+    # end of create separate library ---> 
+    app = msal.PublicClientApplication(client_id, authority=authority_url)
+    result = app.acquire_token_by_username_password(username=username, password=password, scopes=scope)
+    if 'access_token' not in result:
+        print ('Failed to obtain access token')
+    access_token = result['access_token']
+    print(result)
+    header = {'Authorization': f'Bearer {access_token}', 'Accept': 'application/json', 'Content-Type': 'application/json'}
+    # Get refresh history
+
+    # running_cf_name = cf_event.get_var('function_name')
+    # print("Current Running Cloud Function Name :", running_cf_name)
+
+    # triggered_by = cf_event.get_var('pipeline_triggered_by')
+    # print("Pipeline triggered by enterprise_id :", triggered_by)
+    # env_name = cf_event.get_var('env_name_value')
+    
+    print(env_name)
+    #change env_name1 to env_name before trasfer to UAT
+    #remove below 2 line before transfer to UAT
+
+    Datasource_time=f'''
+    SELECT DataSourceKey,max(EndTime)as max_dataload_time FROM `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` where DashboardRefreshFlag='N' and Status='Completed' group by DataSourceKey 
+
+    '''
+    df = client.query(Datasource_time).to_dataframe()
+    if len(df) <=0:
+      return ('Success...',200)  
+    
+    print(f'Printing dataframe df={df}')
+    Datasource = df[['DataSourceKey', 'max_dataload_time']].values.tolist()
+    # Datasource=[[30,'2023-11-10 07:18:11.093284 UTC']]
+    # Datasource=[[73, pd.Timestamp('2023-11-10 08:30:11.093284 UTC', tz='UTC')]] 
+    print(f'Datasource={Datasource}')
+    print(len(Datasource))
+
+
+    data = {
+        'grant_type':'client_credentials',
+        'resource': '00000003-0000-0ff1-ce00-000000000000/ts.accenture.com@e0793d39-0939-496d-b129-198edd916feb', 
+        'client_id': 'be27f10d-572f-4d16-be88-2d88b0192ee7@e0793d39-0939-496d-b129-198edd916feb',
+        'client_secret': '6yfhkgp8ZxKti7WxPxVyrapcBNa5CXAuZF+fFOtw5wE=',
+    }
+
+    headers = {
+        'Content-Type':'application/x-www-form-urlencoded'
+    }
+
+    url = "https://accounts.accesscontrol.windows.net/e0793d39-0939-496d-b129-198edd916feb/tokens/OAuth/2"
+    r = requests.post(url, data=data, headers=headers)
+    print(r.text)
+    json_data = json.loads(r.text)
+    print(json_data)
+    print('Hello')
+    #print(json_data)
+    token_type = json_data['access_token']
+    print(token_type)
+    print('Hello')
+
+
+    headers1 = {
+        'Authorization': f"Bearer {token_type}",
+        'Accept':'application/json;odata=verbose',
+        'Content-Type': 'application/json;odata=verbose',
+        'If-Match':'*'
+    }
+   
+    index1 = 0
+    
+    # While loop to iterate through the dashboard keys
+    while index1 < len(Datasource):
+        print(f'index1= {index1}')
+        DataSourceKey = int(Datasource[index1][0])
+        print(DataSourceKey)
+        max_dataload_time=pd.to_datetime(Datasource[index1][1])
+        print(max_dataload_time)
+        # max_dataload_time=pd.to_datetime(max_dataload_time)
+        # print(f'max_dataload_time={max_dataload_time}')
+        # print(type(max_dataload_time))
+
+        #inserted value  
+        prev_startTime=''
+        prev_endTime=''
+        prev_status=''
+        start_time=''
+        end_time=''
+        refresh_status=''
+        
+        index2=0
+        #DataProcessSubProcessKey=5
+        ProcessName=f'{env_name}' + ' - PBI Refresh'
+        print(f'ProcessName={ProcessName}')
+        Sub_process_key=f'''
+                        SELECT
+                        c.DataProcessSubProcessKey FROM   `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table` c
+                        WHERE c.ProcessName ='{ProcessName}' AND DataSourceType = (SELECT 
+                        DataFeedType
+                        FROM
+                        `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table` a
+                        WHERE
+                        DataSourceKey = {DataSourceKey}
+                        AND Active_YN = 'Y')            
+
+                        '''
+        print(f'Sub_process_key={Sub_process_key}')
+        df = client.query(Sub_process_key).to_dataframe()
+        column_data_types = df.dtypes
+        print(f'Sub_process_key df={df}')
+        json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+        parsed_json = json.loads(json_data_split)
+        key_values = parsed_json['data'][0]
+        DataProcessSubProcessKey = key_values[0]
+        print(f'DataProcessSubProcessKey={DataProcessSubProcessKey}') #value workspace_id and datasetId
+        
+        dash1=f'''
+                WITH dash AS (
+                SELECT a.DashboardKey
+                FROM `{sre_datalake_project_id}.entprep_196865_in.196865_aen_perm_data_source_dashboard_mapping_in_table` a
+                WHERE a.DataSourceKey = {DataSourceKey} and Active_YN ='Y'
+                )
+                SELECT dash.DashboardKey
+                FROM dash
+                left JOIN (
+                SELECT DISTINCT b.DashboardKey
+                FROM `{datalake_project_id}.{database_in}.196865_aen_perm_dashboardrefresh_details_in_table` b
+                WHERE b.DataSourceKey = {DataSourceKey}
+                AND b.Status = 'Completed'
+                AND b.StartTime > (
+                SELECT MAX(c.EndTime) AS max_load_time
+                FROM `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` c
+                WHERE c.DataSourceKey = {DataSourceKey}
+                )
+                AND b.EndTime > (
+                SELECT MAX(d.EndTime) AS max_load_time
+                FROM `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` d
+                WHERE d.DataSourceKey = {DataSourceKey}
+                )
+                ) b ON dash.DashboardKey = b.DashboardKey 
+
+            '''
+        print(f'dash1={dash1}') #where b.DashboardKey is NULL  add in code after test
+        df = client.query(dash1).to_dataframe()
+        #Add the below code if there is an error.
+        print("Before continue")
+        print(f'length of df={len(df)}')
+        
+
+        if len(df) > 0:
+            print("After continue")
+            print(f'Printing dataframe df={df}')
+    
+            column_data_types = df.dtypes
+            print(f'DashboardKey df={df}')
+            Dash = df['DashboardKey'].tolist()
+            print(f'DashboardKey Dash ={Dash}')
+            print('Dash length=',len(Dash))
+        
+            while index2 < len(Dash):
+                prev_startTime=''
+                prev_endTime=''
+                prev_status=''
+                start_time=''
+                end_time=''
+                refresh_status=''
+                # Business_Flag_Pre=''
+                # SRE_Flag_Pre=''
+                # Switch_Flag_YN=''
+                # Report_id=''
+                # Business_Flag_Post=''
+                print(f'index2= {index2}')
+                DashboardKey = int(Dash[index2])
+                print(f'DashboardKey={DashboardKey}')
+                print(f"datasourcekey: {DataSourceKey} -> datasourcetimestamp:{max_dataload_time} dashboard_key: {DashboardKey} " )
+                # Business_flag=''
+                #new code Blue_Green
+                #Business_flag is opposite 
+                # FS=B  flag is G we need to tak B flag 
+                
+
+                if BG_Config==0:
+                    print('Not live')
+                    col_dataset_id='Dataset_id_'+ env_name
+                    col_workspace_id='Workspace_id_'+ env_name
+                    # col_dataset_id='Green_Dataset_id_'+ env_name
+                    # col_workspace_id='Green_Workspace_id_'+ env_name
+                    # dashboard_name=f"""
+                    #   SELECT ReportRoute,Report_id FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dashboard_master_in_table` where DashboardKey={DashboardKey}
+                    #    """
+                    # df = client.query(dashboard_name).to_dataframe()
+                    # print(f'Printing dataframe df={df}')
+                    # Dashboard_n = df[['ReportRoute','Report_id']].values.tolist()
+                    # reportName = Dashboard_n[0][0]
+                    # Report_id=Dashboard_n[0][1]
+                    # print(f'reportName={reportName}')
+                    # Report_id=0
+                    # print(f'Report_id={Report_id}')
+                    # print('Start Program')
+                    # Business_Flag_Pre='NA'
+                    # SRE_Flag_Pre='NA'
+                    # Switch_Flag_YN='N'
+                    # Business_Flag_Post='NA'
+                elif BG_Config==1:
+                    print('Live')
+                    # invoke the API and get the details for Business_flag
+                    # dashbaord_key
+                    dashboard_name=f"""
+                      SELECT ReportRoute,Report_id FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dashboard_master_in_table` where DashboardKey={DashboardKey}
+                       """
+                    df = client.query(dashboard_name).to_dataframe()
+                    print(f'Printing dataframe df={df}')
+                    Dashboard_n = df[['ReportRoute','Report_id']].values.tolist()
+                    reportName = Dashboard_n[0][0]
+                    Report_id=Dashboard_n[0][1]
+                    print(f'reportName={reportName}')
+                    # Report_id=0
+                    print(f'Report_id={Report_id}')
+
+                    print('Start Program')
+                    # reportName = 'pre-close'
+                    # api_url='https://valuenavigator.ciosit.accenture.com/api/BlueGreenToggle'
+                    # with open('yml-pipeline/env-config/varibale.yml') as f:
+                    #     data = yaml.load(f, Loader=yaml.FullLoader)
+                    #     api_url = data['api_url']
+                    # reportName = 'end-to-end-profitability'
+                    api_url = 'https://valuenavigator.ciosit.accenture.com/api/BlueGreenToggle'
+
+                    try:
+                        # Construct the full URL with the method name and parameters
+                        full_url = f"{api_url}/GetEnvDetails"
+
+                        # Add parameters to the URL
+                        params = {"ReportName": reportName, "userType": "business"}
+                        full_url += "?" + "&".join([f"{key}={value}" for key, value in params.items()])
+                        print('Param:= ',params)
+                        # Make the GET request
+                        response = requests.get(full_url)
+                        response.raise_for_status()
+                        print('response.raise_for_status():= ',response.raise_for_status())
+                        # Assuming the response is in JSON format
+                        api_data = response.json()
+                   
+                        # Print JSON data directly
+                        data = json.loads(json.dumps(api_data))
+                        print('Data', data)
+                        Business_flag = data[0]['businessFlag']
+                        print(Business_flag)
+
+                    except requests.exceptions.HTTPError as errh:
+                        print(f"HTTP Error: {errh}")
+                        print(f"Error Code: {response.status_code}")
+
+                    except requests.exceptions.RequestException as err:
+                        print(f"Request Error: {err}")
+                
+                # if Business_flag=='G':
+                    
+                #     col_dataset_id='Blue_Dataset_id_'+ env_name
+                #     col_workspace_id='Blue_Workspace_id_'+ env_name
+                #     #Business_flag=''Green'
+                #     # Business_Flag='Green'
+                #     # SRE_Flag='Blue'
+                #     Business_Flag_Pre='Green'
+                #     SRE_Flag_Pre='Blue'
+                #     Switch_Flag_YN='Y'
+                #     # Report_id=Report_id
+                #     Business_Flag_Post='Blue'
+
+                    
+                # elif Business_flag=='B':
+                #     col_dataset_id='Green_Dataset_id_'+ env_name
+                #     col_workspace_id='Green_Workspace_id_'+ env_name
+                #     # Business_Flag='Blue'
+                #     # SRE_Flag='Green'
+                #     Business_Flag_Pre='Blue'
+                #     SRE_Flag_Pre='Green'
+                #     Switch_Flag_YN='Y'
+                #     # Report_id=Report_id
+                #     Business_Flag_Post='Green'
+
+                    
+
+                # print('col_dataset_id=',col_dataset_id)
+                # print('col_workspace_id=',col_workspace_id)
+                
+
+                
+                
+                #choose the dashboard and opposite to the business flag
+                        
+                
+                # col_workspace_id = 'Workspace_id_'+ env_name
+                print(f'col_workspace_id={col_workspace_id}')     
+                # col_dataset_id = 'Dataset_id_'+ env_name
+                print(f'col_dataset_id={col_dataset_id}')   
+                query_param=f'''SELECT {col_workspace_id}, {col_dataset_id} 
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dashboard_master_in_table` 
+                WHERE DashboardKey={DashboardKey}'''
+                
+                df = client.query(query_param).to_dataframe()
+                column_data_types = df.dtypes
+                print(df)
+                json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+                parsed_json = json.loads(json_data_split)
+                key_values = parsed_json['data'][0]
+                workspace_id = key_values[0]
+                dataset_id = key_values[1]
+                print(f'workspace_id={workspace_id}')
+                print(f'dataset_id={dataset_id}')
+                print(workspace_id,dataset_id) #value workspace_id and datasetId
+                # Get refresh history
+                refresh_history_url = f'{restapi_url}{workspace_id}/datasets/{dataset_id}/refreshes?$top=7'
+                print(f'refresh_history_url={refresh_history_url}')
+                refresh_request = requests.get(url=refresh_history_url, headers=header)
+                history_data = refresh_request.json()
+                print(f'history_data={history_data}')
+                #print(history_data)
+
+
+                history_data = refresh_request.json()
+                
+
+                for i in range(0,6):
+                            print(f'i={i}')
+                            most_recent_refresh = history_data['value'][i]
+                            # print(f'most_recent_refresh={most_recent_refresh}')
+                            #print(most_recent_refresh['startTime'])
+                            #print(most_recent_refresh['status'])
+                            startTime=pd.to_datetime(most_recent_refresh['startTime'])
+                            #startTime=[[pd.Timestamp(most_recent_refresh['startTime'])]]
+                            print(f'startTime before if condition={startTime}')
+                            if startTime > max_dataload_time and most_recent_refresh['status'] =='Completed':
+                                prev_startTime = most_recent_refresh['startTime']
+                                print(f'prev_startTime={prev_startTime}')
+                                prev_endTime = most_recent_refresh['endTime']
+                                print(f'prev_endTime={prev_endTime}')
+                                prev_status=most_recent_refresh['status']
+                                print(f'prev_status={prev_status}')
+
+                            elif startTime > max_dataload_time and most_recent_refresh['status'] =='Failed':
+                                 
+                                 print('Failed')
+                                 print(" Failed DashboardKey: ",DashboardKey)
+                                
+                                 url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/web/lists/getbytitle('196865_aen_perm_dashboard_master')/items?$filter=DashboardKey eq {DashboardKey}"
+                                      
+                                 print(url)
+                                 p = requests.get(url, headers=headers1)
+                                 data = p.json()
+                                # Check if the item with DashboardKey was found
+                                 ID = data['d']['results'][0]['Id']
+                                 print("Sharepoint ID :",ID)
+                                 data = {
+                                                "__metadata": {"type": "SP.Data.196865_x005f_aen_x005f_perm_x005f_dashboard_x005f_masterListItem"},
+                                                f"{env_name}_Refresh_Onhold": "HOLD"
+                                            }
+                                 url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/web/lists/getbytitle('196865_aen_perm_dashboard_master')/items({ID})"
+                                 print(url)
+                                 p = requests.patch(url, headers=headers1,json=data)
+                                 print(p)
+                                 print("Dashboard HOLD Status Updated in SP!")
+                                    
+                                 continue
+                            else:
+                                 break
+			                            
+            
+                if prev_startTime !='' and prev_endTime !='' and prev_status !='':
+                    start_time=prev_startTime
+                    end_time=prev_endTime
+                    refresh_status=prev_status
+                    print(prev_startTime)
+                    if refresh_status != "Unknown":
+                        print (f'Most recent refresh started at: {start_time}, ended at: {end_time}, refresh status : {refresh_status}')
+                    else:
+                        print ('Refresh status is still Unknown after waiting.')
+
+                    
+                    print(start_time) 
+                    start_time=pd.to_datetime(start_time)
+                    print(start_time) 
+                    print(f'start_time={start_time}')
+                    print(type(start_time))
+                    end_time=pd.to_datetime(end_time)
+                    print(end_time)
+                    print(f'end_time={end_time}')
+                    print(type(end_time))
+                    print(refresh_status)
+                    print(f'end_time={end_time}')
+                    
+                    countsql=f'''
+                    select count(1) from `{datalake_project_id}.{database_in}.196865_aen_perm_dashboardrefresh_details_in_table` where dashboardkey={DashboardKey} and   datasourcekey={DataSourceKey} and StartTime >= '{max_dataload_time}' and EndTime >= '{max_dataload_time}' and Status='Completed'   '''
+                    print(f'countsql={countsql}')
+                    df = client.query(countsql).to_dataframe()
+                    column_data_types = df.dtypes
+                    print(df)
+                    json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+                    parsed_json = json.loads(json_data_split)
+                    record_exist = parsed_json['data'][0]
+                    print(record_exist[0])
+                    #for dashboard in dashboard_data:
+
+                    print(type(record_exist))
+
+                    # if start_time < max_dataload_time or end_time < max_dataload_time:
+                    if record_exist[0] > 0:
+                        print('Do Nothing')
+
+                    elif record_exist[0] == 0 and refresh_status!='Unknown' and start_time >=max_dataload_time and end_time >=max_dataload_time:
+                        print('insert')
+                        print(DataSourceKey)
+                        DataSourceKey = int(DataSourceKey)
+                        print(DataSourceKey)
+                        print(DashboardKey)
+                        DashboardKey = int(DashboardKey)
+                        print(DashboardKey)
+                        updatedashboardprocess = f"""
+                                                update `{datalake_project_id}.{database_in}.196865_aen_perm_dashboard_process_details_in_table`
+                                                set Status = '{refresh_status}'
+                                                where DashboardKey ={DashboardKey} 
+                                                and DashboardProcessActivityDetailKey = (SELECT IFNULL(MAX(DashboardProcessActivityDetailKey),0) FROM `prd-65343-datalake-bd-88394358.entprep_196865_in.196865_aen_perm_dashboard_process_details_in_table` where dashboardkey={DashboardKey})
+
+                            """
+                        print('dashboardprocess=',updatedashboardprocess)
+                        df=client.query(updatedashboardprocess).to_dataframe()
+                        print('df',df)
+
+
+                        insert_datapbi = f"""
+                            INSERT INTO `{datalake_project_id}.{database_in}.196865_aen_perm_dashboardrefresh_details_in_table` (
+
+                                DashboardRefreshDetailKey
+                                ,DataSourceKey
+                                ,DashboardKey
+                                ,DataProcessSubProcessKey
+                                ,Status
+                                ,StartTime
+                                ,EndTime
+                                ,DataRefreshMonth
+                                ,DataRefreshYear
+                                ,CreatedTimeStamp
+                                ,CreatedBY
+                                ,UpdatedTimeStamp
+                                ,UpdatedBY
+                                ,Comment
+                                ,Active_YN
+                                ,Business_Flag_Pre
+                                ,SRE_Flag_Pre
+                                ,Switch_Flag_YN
+                                ,Report_id
+                                ,Business_Flag_Post
+    
+                            )
+                            select   (SELECT IFNULL(MAX(DashboardRefreshDetailKey),0) +1 FROM `{datalake_project_id}.{database_in}.196865_aen_perm_dashboardrefresh_details_in_table` ) as DashboardRefreshDetailKey,
+                                (select {DataSourceKey}) as DataSourceKey,
+                                (select {DashboardKey}) as DashboardKey,
+                                (select {DataProcessSubProcessKey}) as DataProcessSubProcessKey,
+                                (select '{refresh_status}') as Status,
+                                (select safe_cast('{start_time}'as timestamp)) as StartTime,
+                                (select safe_cast('{end_time}'as timestamp)) as EndTime,
+                                EXTRACT (month FROM current_date )  AS DataRefreshMonth,
+                                EXTRACT (year FROM current_date ) AS DataRefreshYear,
+                                current_timestamp() as CreatedTimeStamp,
+                                'system' AS CreatedBY,
+                                current_timestamp() as UpdatedTimeStamp,
+                                'system' AS UpdatedBY,
+                                '' AS Comment,
+                                'Y' AS Active_YN,
+                                '{Business_Flag_Pre}' AS Business_Flag_Pre,
+                                '{SRE_Flag_Pre}' AS SRE_Flag_Pre,
+                                '{Switch_Flag_YN}' AS Switch_Flag_YN,
+                                 {Report_id} AS Report_id,
+                                '{Business_Flag_Post}' AS Business_Flag_Post
+
+
+                            """
+                        print(f'insert_datapbi={insert_datapbi}')
+                        job = client.query(insert_datapbi)
+                        job.result()  
+                        print('load table completed')
+                        client = bigquery.Client()
+                        # Commenting stop automatically generated mails ---Start here
+                        
+                        datatransfer = f"""
+                                select   (SELECT IFNULL(MAX(DashboardRefreshDetailKey),0) +1 FROM `{datalake_project_id}.{database_in}.196865_aen_perm_dashboardrefresh_details_in_table` ) as DashboardRefreshDetailKey,
+                                (select {DataSourceKey}) as DataSourceKey,
+                                (select {DashboardKey}) as DashboardKey,
+                                (select {DataProcessSubProcessKey}) as DataProcessSubProcessKey,
+                                (select '{refresh_status}') as Status,
+                                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', '{start_time}')) AS StartTime,
+                                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', '{end_time}')) AS EndTime,
+                                EXTRACT (month FROM current_date )  AS DataRefreshMonth,
+                                EXTRACT (year FROM current_date ) AS DataRefreshYear,
+                                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS CreatedTimeStamp,
+                                'system' AS CreatedBY,
+                                (SELECT FORMAT_TIMESTAMP('%m/%e/%Y %I:%M %p', CURRENT_DATETIME())) AS UpdatedTimeStamp,
+                                'system' AS UpdatedBY,
+                                '' AS Comment,
+                                'Y' AS Active_YN,
+                                '{Business_Flag_Pre}' AS Business_Flag_Pre,
+                                '{SRE_Flag_Pre}' AS SRE_Flag_Pre,
+                                '{Switch_Flag_YN}' AS Switch_Flag_YN,
+                                 {Report_id} AS Report_id,
+                                '{Business_Flag_Post}' AS Business_Flag_Post
+                            """
+                        df = client.query(datatransfer).to_dataframe()
+                        print(df)
+                        print('Start')
+                        json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+                        parsed_json = json.loads(json_data_split)
+                        key_values = parsed_json['data'][0]
+                        value1 = key_values[0]
+                        value2 = key_values[1]
+                        value3 = key_values[2]
+                        value4 = key_values[3]
+                        value5 = key_values[4]
+                        value6 = key_values[5]
+                        value7 = key_values[6]
+                        value8 = key_values[7]
+                        value9 = key_values[8]
+                        value10 = key_values[9]
+                        value11 = key_values[10]
+                        value12 = key_values[11]
+                        value13 = key_values[12]
+                        value14 = key_values[13]
+                        value15 = key_values[14]
+                        value16 = key_values[15]
+                        value17 = key_values[16]
+                        value18 = key_values[17]
+                        value19 = key_values[18]
+                        value20 = key_values[19]
+                    
+                        print(value1)
+                        print(value2)
+                        print(value3)
+                        print(value4)
+                        print(value5)
+                        print(value6)
+                        print(value7)
+                        print(value8)
+                        print(value9)
+                        print(value10)
+                        print(value11)
+                        print(value12)
+                        print(value13)
+                        print(value14)
+                        print(value15)
+                        print(value16)
+                        print(value17)
+                        print(value18)
+                        print(value19)
+                        print(value20)
+                    
+                        table_names='196865_aen_perm_dashboardrefresh_details'
+                        table='196865aenpermdashboardrefreshdetails'
+                        print('end')
+                        data = {
+                            "__metadata": {"type": f"SP.Data.{table}ListItem"},
+                            "DashboardRefreshDetailKey": value1,
+                            "DataSourceKey": value2,
+                            "DashboardKey":value3,
+                            "DataProcessSubprocessKey": value4,
+                            "Status":value5,
+                            "StartTime":value6,
+                            "EndTime":value7,
+                            "DataRefreshMonth": value8,
+                            "DataRefreshYear": value9,
+                            "CreatedTimeStamp": value10,
+                            "UpdatedTimeStamp":value12,
+                            "Comment": value14,
+                            "Active_YN":value15,
+                            "Business_Flag_Pre":value16,
+                            "SRE_Flag_Pre":value17,
+                            "Switch_Flag_YN":value18,
+                            "Report_id":value19,
+                            "Business_Flag_Post":value20
+
+
+                        }
+
+                        url = f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/Lists/getbytitle('{table_names}')/items"
+                        p = requests.post(url, headers=headers1, json=data)
+                        print(p)
+                        #Perform further actions within pre_execute if needed
+
+                        # Commenting stop automatically generated mails ---End here
+
+
+
+
+                        
+                index2 += 1
+            
+            
+            update_Y =f"""
+                                update 
+                                `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table`
+                                set DashboardRefreshFlag='Y'
+                                WHERE
+                                DataSourceKey={DataSourceKey}
+                                AND ((
+                                SELECT
+                                COUNT(1)
+                                FROM
+                                `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_dashboard_mapping_in_table`
+                                WHERE
+                                DataSourceKey={DataSourceKey} and Active_YN = 'Y') = (
+                                SELECT
+                                COUNT(DISTINCT b.DashboardKey)
+                                FROM
+                                `{datalake_project_id}.{database_in}.196865_aen_perm_dashboardrefresh_details_in_table` b
+                                WHERE
+                                b.DataSourceKey = {DataSourceKey}
+                                AND b.Status = 'Completed'
+                                AND b.StartTime > (
+                                SELECT
+                                MAX(c.EndTime) AS max_load_time
+                                FROM
+                                `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` c
+                                WHERE
+                                c.DataSourceKey = {DataSourceKey} )
+                                AND b.EndTime > (
+                                SELECT
+                                MAX(d.EndTime) AS max_load_time
+                                FROM
+                                `{datalake_project_id}.{database_in}.196865_aen_perm_datarefresh_details_in_table` d
+                                WHERE
+                                d.DataSourceKey = {DataSourceKey})))
+
+                                """
+            job = client.query(update_Y)
+            job.result()  
+            print('update table datarefresh flag Y')
+            #below sript only to the prevent double excution of code
+               
+        index1 += 1
+                    
+    return ('Success...',200)   
+
+
+
