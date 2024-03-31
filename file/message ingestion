@@ -1,0 +1,123 @@
+######### This function is being used to create a table entry based on file/message ingestion.#####
+###################################################################################################
+from google.cloud import storage
+from google.cloud import bigquery
+import time
+from random import randint
+import base64
+import json
+from collections import OrderedDict
+from datetime import datetime
+from datetime import timedelta
+
+######### function to get the handles api client and table ref #########
+def create_table_ref(table_name):
+    try:
+        client = bigquery.Client(project="#{GCP_DATALAKE_PROJECT_ID}#")
+        dataset_ref = client.dataset("#{GCP_DATASET_ID}#", "#{GCP_DATALAKE_PROJECT_ID}#")
+        table_ref = dataset_ref.table(table_name)
+        return (client,table_ref)
+    except Exception as e:
+        print("Please check the workflow with table ref creation..")
+        print(e)
+
+######### function to get the handles api client and table ref #########
+def if_tbl_exists(client,table_ref):
+    from google.cloud.exceptions import NotFound
+    try:
+        client.get_table(table_ref)
+        return True
+    except NotFound:
+        return False
+
+######### function to insert into table #########
+def insert_into_table(table_name,insrt_stmt):
+    try:
+        print("pushing entry into {}".format(table_name))
+        client,table_ref = create_table_ref(table_name)
+        table = client.get_table(table_ref)
+        insert_log = client.insert_rows(table, insrt_stmt)
+        if insert_log == []:
+            print('Record saved successfully.')
+        else:
+            print('Error during inserting to BigQuery')
+    except Exception as e:
+        print("Please check the workflow with insert_into_table..")
+        print(e)
+
+######### function to create BQ table #########
+def create_bq_table(table_name, insrt_stmt):
+    try:
+        client,table_ref = create_table_ref(table_name)
+        if if_tbl_exists(client,table_ref):
+            print("Table {} already exists...".format(table_name))
+        else:
+            print("Table {} doesn't exists creating the same..".format(table_name))
+            schema = []
+            for keyname in insrt_stmt:
+                if keyname == "MessageReceiveddttm":
+                    schm=bigquery.SchemaField(keyname, "TIMESTAMP", mode="REQUIRED")
+                else:
+                    schm=bigquery.SchemaField(keyname, "STRING", mode="REQUIRED")
+                schema.append(schm)
+            table = bigquery.Table(table_ref, schema=schema)
+            ## Partiotiong table for MessageReceiveddttm, use as required
+            table.time_partitioning = bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY,
+            field="MessageReceiveddttm",  # name of column to use for partitioning
+            expiration_ms=7776000000,
+            )
+            table = client.create_table(table, exists_ok=True)
+            print("Created table {}".format(table_name))
+    except Exception as e:
+        print("Please check the table creation functionality..")
+        print(e)        
+
+######### main function flow #########
+def #{TRIGGER_FUNCTION_ENTRYPOINT}#(request):
+    try:
+        print ('Invocating BQ query..')
+        request_json = request.get_json(silent=True)
+        request_args = request.args
+        print("Request json is --> {}".format(request_json))
+        cond1='attributes' in request_json["message"]
+        cond2=request_json["message"]['attributes'] is not None if cond1 else True
+        if cond1 and cond2 :
+            if 'bucketId' in request_json["message"]["attributes"] :
+                print("This is a trigger from bucket..")
+                table_name = "ingestionlogs_textpayload"
+                jsondata = json.loads(base64.b64decode(request_json["message"]["data"]).decode('utf-8'))
+            else :
+                print("This is a direct message push, but using Attributes")
+                table_name = "ingestionlogs_msg"
+                jsondata=request_json["message"]["attributes"]
+        else:
+            print("This is a direct message push, using data body")
+            table_name = "ingestionlogs_msg"
+            data = base64.b64decode(request_json["message"]['data']).decode('utf-8')
+            data = data.replace("\'", "\"")
+            jsondata = json.loads(data)
+        publish_time=request_json["message"]["publish_time"]
+        column_list=[]
+        values_list=[]
+        #### defining table columns ####
+        if table_name == "ingestionlogs_msg":
+            column_list=['EventType','AIRID','AppName','JobID','TopicName','GCPProject','BQDataset','BQTable','SrcRecordCount','BQRecordCount','RawingestionDttm','MessageReceiveddttm','publish_time']
+        if table_name == "ingestionlogs_textpayload":
+            column_list=['bucket','name','selfLink','id','kind','etag','crc32c','mediaLink','md5Hash','size','timeStorageClassUpdated','storageClass','updated','timeCreated','contentType','metageneration','generation','MessageReceiveddttm','publish_time']
+        if len(column_list) == 0:
+            raise ValueError('Only 2 Tables are permitted to be used ingestionlogs_textpayload and ingestionlogs_msg.. ')
+        create_bq_table(table_name, column_list)
+        for k in column_list:
+            if k not in jsondata.keys():
+                jsondata[k]='NULL'
+            if k == 'MessageReceiveddttm':
+                jsondata[k]=datetime.now()
+            if k == 'publish_time':
+                jsondata[k]=publish_time
+            values_list.append(jsondata[k])
+        values_list = [tuple(values_list)]
+        insert_into_table(table_name, values_list)
+    except Exception as e:
+        print("Please check the workflow with main function..")
+        print(e)
