@@ -1,0 +1,52 @@
+import base64
+import os
+import glob
+import pandas as pd
+from airflow.operators.python_operator import PythonOperator
+from google.cloud import bigquery
+from airflow.models import Variable, TaskInstance
+from airflow import models
+from airflow.utils.dates import days_ago
+from datetime import datetime, timedelta
+import os
+import sys
+import configparser as cp
+
+config=cp.ConfigParser()
+config.read("/home/airflow/gcs/dags/env-config/env-config.conf")
+
+projName=config.get("NONPRODDEV","ProjectName")
+dsName=config.get("NONPRODDEV","DatasetName")
+gcsClientName=config.get("NONPRODDEV","ClientStgBucketName")
+clientSuffix=config.get("NONPRODDEV","ClientstgSuffix")
+
+def bqtogcscomposer():
+          today = datetime.today().strftime('%B%y')
+          client = bigquery.Client(project=projName)
+          qry = f"""SELECT b.OriginId AS SourceId,a.ClientNm1,a.StreetAddr,a.StreetAddr1,a.StreetAddr2,a.CityDesc,a.PostalCd,a.CountryCd,a.StateCd,a.DistrictCd,a.DistrictCd,a.CreationDt,a.GroupCd,a.BlockingCd,a.LanguageCd,a.IndustryCd,a.TaxJurisdicationNbr,a.VATNbr,a.TaxNbr1,a.TaxNbr2,a.TaxNbr3,a.TaxNbr4,a.TaxNbr5,a.UltimateMCCd,a.UltimateMCNm,a.ImmediateLevelMCCd,a.InmediateLevelMCNm,a.EngagementTypeCd FROM `{projName}.{dsName}.client_stg` a JOIN `{projName}.{dsName}.OriginIdLkp` b ON a.SourceCd=b.SourceCd and a.SourceId=b.SourceId WHERE b.EngagementTypeCd='CLIE' """
+          #qry = f"""select SourceId,ClientNm,ClientNm1,StreetAddr,StreetAddr1,StreetAddr2,CityDesc,PostalCd,CountryCd,StateCd,DistrictCd,CreationDt,GroupCd,BlockingCd,LanguageCd,IndustryCd,TaxJurisdicationNbr,VATNbr,TaxNbr1,TaxNbr2,TaxNbr3,TaxNbr4,TaxNbr5,UltimateMCCd,UltimateMCNm,ImmediateLevelMCCd,InmediateLevelMCNm,SourceCd from `npd-65343-datalake-bd-b4f8d566.xddpdev_196865_in.client_stg`"""
+          query_job= client.query(qry).to_dataframe()
+          query_job.rename(columns={"SourceId": "Customer","ClientNm": "Name 1","ClientNm1": "Name 2","StreetAddr": "Street 1","StreetAddr1": "Street 2","StreetAddr2": "Street 3","CityDesc": "City","PostalCd": "PostalCode","CountryCd": "Cty(Country Code)","StateCd": "State/Province","DistrictCd": "District","CreationDt": "Creation Date","GroupCd": "Group","BlockingCd": "Blocking","LanguageCd": "Language","IndustryCd": "Indcode 1","TaxJurisdicationNbr": "Tax Jur","VATNbr": "VAT Registration No","TaxNbr1": "Tax Number 1","TaxNbr2": "Tax Number 2","TaxNbr3": "Tax Number 3","TaxNbr4": "Tax Number 4","TaxNbr5": "Tax Number 5","UltimateMCCd": "Ultimate MC","UltimateMCNm": "Ultimate MC Name","ImmediateLevelMCCd": "Immediate Level MC","InmediateLevelMCNm": "Inmediate Leval MC Name"}, inplace=True)    
+          output_file=f'{gcsClientName}/Customer Input File {today}_TEST_{clientSuffix}.csv'
+          query_job.to_csv(output_file,index=False)
+
+    
+#Default Variable
+default_dag_args = {
+    'start_date':days_ago(0)
+}
+
+#Dag Defination
+with models.DAG(
+        'dl_bqtogcs_client_stg',
+        schedule_interval=None,
+        default_args=default_dag_args) as dag:
+
+      client_stg_bqtogcs=PythonOperator(
+           task_id='bqtogcs_client_stg',
+           python_callable=bqtogcscomposer)
+
+# Define DAG dependencies.
+(
+ client_stg_bqtogcs
+)
