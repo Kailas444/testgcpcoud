@@ -1,0 +1,23 @@
+import base64
+import os
+import glob
+import pandas as pd
+from google.cloud import bigquery
+	
+
+def bqtogcs_stg(self, event):
+    
+    client = bigquery.Client(project='#{GCP_PROJECT_ID}#')
+    qry1 = f"""select * from `npd-196865-xddpcds-bd-d954b983.dlt_xddp_mdm_staging_196865.client_stg`"""
+    query_job1 = client.query(qry1).to_dataframe()
+    query_job1.drop(columns=query_job1.columns[-1],  axis=1,  inplace=True)
+    query_job1.to_csv("gs://npd-196865-xddpcds-bd-trigger-bucket-bqtogcs-stg-npd/Accenture_Client_File.csv", index=False)
+    qry2 = f"""select * from `npd-196865-xddpcds-bd-d954b983.dlt_xddp_mdm_staging_196865.partner_stg`"""
+    query_job2 = client.query(qry2).to_dataframe()
+    query_job2.drop(columns=query_job2.columns[-1],  axis=1,  inplace=True)
+    query_job2.to_csv("gs://npd-196865-xddpcds-bd-trigger-bucket-bqtogcs-stg-npd/Accenture_Supplier_File.csv", index=False)
+    qry3 = f"""select * from `npd-196865-xddpcds-bd-d954b983.dlt_xddp_mdm_staging_196865.supplier_stg`"""
+    query_job3 = client.query(qry3).to_dataframe()
+    query_job3.drop(columns=query_job3.columns[-1],  axis=1,  inplace=True)
+    query_job3.to_csv("gs://npd-196865-xddpcds-bd-trigger-bucket-bqtogcs-stg-npd/Accenture_Partner_File.csv", index=False)
+    client.close()
