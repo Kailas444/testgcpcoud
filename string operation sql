@@ -34,3 +34,15 @@ string_agg(Dataset_id_DEV)
  FROM
   `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_dashboard_master_in_table`
   group by Workspace_id_DEV
+
+
+
+
+SUbquery 
+From 
+select
+where
+ 
+Subquery - Case - Operators - Procedures - Exists
+ 
+Union All - Alter - Add - Update - Insert Into
