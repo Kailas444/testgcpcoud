@@ -1,0 +1,5 @@
+LOAD DATA Overwrite `sbx-196865-dltsep-bd-b524b717.dlt_testing.hr_targets_gm_fy23`
+FROM FILES (
+  format = 'CSV',
+  uris = ['gs://sbx-196865-dltsep-bd-hr2/HR_Targets_GM_FY23.csv'],
+  skip_leading_rows = 1);
