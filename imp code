@@ -1,0 +1,11 @@
+SELECT
+  county_fips_code,
+  forecast_date,
+  new_confirmed,
+  RANK()OVER (PARTITION BY forecast_date ORDER BY new_confirmed)AS Rank_number,
+  dense_rank()OVER (PARTITION BY forecast_date ORDER BY new_confirmed)AS dense_rank_number,
+  row_number()OVER (PARTITION BY forecast_date ORDER BY new_confirmed)AS dense_row_number
+FROM
+  `bigquery-public-data.covid19_public_forecasts.county_28d`
+WHERE
+  new_confirmed IS NOT null
