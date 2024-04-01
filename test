@@ -1,0 +1,234 @@
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.exceptions import DagNotFound
+from airflow.operators.dagrun_operator import TriggerDagRunOperator
+from airflow.operators.python_operator import PythonOperator
+from google.cloud import bigquery
+import json
+from datetime import datetime
+import configparser
+import os
+import json
+import pandas as pd  
+import requests
+import json
+import base64
+import google.auth.transport.requests
+
+#Remove this comment after code is marged to main test branch
+
+config = configparser.ConfigParser()
+config.read(os.path.join(os.path.dirname(__file__), '..', 'configuration', 'code.config'))
+project_id = config.get('parameters', 'project_id')
+env_name = config.get('parameters', 'env_name_sre')
+database_in = config.get('parameters', 'database_in')
+sre_datalake_project_id = config.get('parameters','sre_datalake_project_id')
+sre_database_in = config.get('parameters','sre_database_in')
+datalake_project_id = config.get('parameters','datalake_project_id')
+default_args = {
+    'owner': 'airflow',
+    'start_date': datetime(2023, 1, 1),
+    'depends_on_past': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+main_dag = DAG(
+   dag_id='SRE_Auto_Dataload',
+    description='S',
+    concurrency=1,
+    schedule_interval=None,
+    start_date=datetime(2023, 4, 21),
+    catchup=False,
+    default_args=default_args
+)
+
+def trigger(**context):
+    client = bigquery.Client()
+    # env='UAT'
+    # env_name='UAT'
+    if env_name=='UAT':
+        cloudcomposer = f"""
+            SELECT d1.DataSourceKey,d3.NewContainerName,d3.RefreshMode,d3.DependenciesMode,d3.DataFeedType
+            FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_datarefresh_details_auto_in_table` AS d1
+            JOIN (
+                SELECT DataProcessSubprocessKey 
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table` 
+                WHERE ProcessName = CONCAT('{env_name}', ' - Source data Readiness')
+                AND SubProcessName = 'Data Cleanup'
+            ) AS s1 ON d1.DataProcessSubprocessKey = s1.DataProcessSubprocessKey
+            join `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table` d3
+            on d3.DataSourceKey=d1.DataSourceKey and d3.RefreshMode='Composer'
+            WHERE d1.Active_YN='Y' and
+            d1.DataSourceKey NOT IN (
+                SELECT DataSourceKey 
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_datarefresh_details_auto_in_table` AS d2
+                JOIN (
+                    SELECT DataProcessSubprocessKey 
+                    FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table` 
+                    WHERE ProcessName = CONCAT('{env_name}', ' - Data Process') 
+                    and SubProcessName = 'Perform Data Load'
+                ) AS s2 ON d2.DataProcessSubprocessKey = s2.DataProcessSubprocessKey
+                WHERE d2.Active_YN = 'Y' 
+            ) 
+            """
+    elif env_name=='PROD':
+        cloudcomposer = f"""
+        SELECT d1.DataSourceKey,d3.NewContainerName,d3.RefreshMode,d3.DependenciesMode,d3.DataFeedType
+        FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_datarefresh_details_auto_in_table` AS d1
+        JOIN (
+            SELECT DataProcessSubprocessKey
+            FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`
+            WHERE ProcessName = CONCAT('UAT - SignOff Received from QA Team')
+            AND SubProcessName = 'QA Sign off Received'
+        ) AS s1 ON d1.DataProcessSubprocessKey = s1.DataProcessSubprocessKey
+        join `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_monthly_in_table` d3
+        on d3.DataSourceKey=d1.DataSourceKey and d3.RefreshMode='Composer'
+        WHERE d1.Active_YN='Y' and
+        Status = 'Signoff Received' and
+        d1.DataSourceKey NOT IN (
+            SELECT DataSourceKey
+            FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_datarefresh_details_auto_in_table` AS d2
+            JOIN (
+                SELECT DataProcessSubprocessKey
+                FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`
+                WHERE ProcessName = CONCAT('{env_name}', ' - Data Process')
+                and SubProcessName = 'Perform Data Load' and Active_YN = 'Y'
+            ) AS s2 ON d2.DataProcessSubprocessKey = s2.DataProcessSubprocessKey
+            WHERE d2.Active_YN = 'Y'
+        )
+        """
+    print('cloudcomposer=', cloudcomposer)
+    df = client.query(cloudcomposer).to_dataframe()
+    if df.empty:
+        print(f'No data found for DataSourceKey closing program')
+        return
+    print('hello')
+    datasource = df[['DataSourceKey','NewContainerName','RefreshMode','DependenciesMode','DataFeedType']].values.tolist()
+    # datasource = df[['DataFeedName','NewContainerName']].values.tolist()
+
+    # datasource1=[153,133,127,13] 
+    for i in range (0,len(datasource)):
+        #Add cloumn name Active_YN='Y
+        DataSourceKey=datasource[i][0]
+        NewContainerName = datasource[i][1]
+        RefreshMode=datasource[i][2]
+        DependenciesMode=datasource[i][3]
+        DataFeedType=datasource[i][4]
+        print('DataSourceKey', DataSourceKey)
+        print('NewContainerName', NewContainerName)
+        print('RefreshMode=', RefreshMode)
+        print('DependenciesMode=', DependenciesMode)
+        print('DataFeedType=', DataFeedType)
+        if DependenciesMode=='Independent':
+           print('hello')
+        elif DependenciesMode=='Dependent':
+            # Dependent=f"""
+            # select DependentDataSourceKey from `prd-65343-datalake-bd-88394358.entprep_196865_in.196865_aen_perm_data_source_dependency_mapping_in_table` 
+            # where DataSourceKey={DataSourceKey} and Active_YN='Y'
+            # """
+            # print('Dependent=', Dependent)
+            # df = client.query(Dependent).to_dataframe()
+            # datasource = df[['DependentDataSourceKey']].values.tolist()
+            # DataSourceKey = datasource[0]
+            # print('DependentDataSourceKey')
+
+            param1=f"""
+            select count(distinct DataSourceKey) from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_dependency_mapping_in_table`  where DataSourceKey={DataSourceKey} and Active_YN='Y'            
+              """
+            print('param1=',param1)
+            query_job = client.query(param1)
+            result = query_job.result()
+            count1 = next(result)[0]
+            print("Count1:", count1)
+            param2=f"""
+                WITH cte AS (
+                            SELECT DataProcessSubProcessKey 
+                            FROM `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_dataprocess_subprocess_master_in_table`  
+                            WHERE ProcessName = CONCAT('{env_name}', ' - Data Process') AND SubProcessName = 'Perform Data Sanity Check' AND DataSourceType = '{DataFeedType}'
+                )
+                select count(distinct DataSourceKey) from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_datarefresh_details_auto_in_table`
+                  where DataProcessSubProcessKey =(select * from cte)  and 
+                  DataSourceKey in (select count(distinct DataSourceKey) from `{sre_datalake_project_id}.{sre_database_in}.196865_aen_perm_data_source_dependency_mapping_in_table`  where DataSourceKey={DataSourceKey} and Active_YN='Y'        
+                ) and Active_YN='Y';            
+                """
+            print('param2=',param2)
+            query_job = client.query(param2)
+            result = query_job.result()
+            count2 = next(result)[0]
+            print("Count2:", count2)
+            if count1==count2:
+                print('Trigger the job- all depenent job sanity check are completed')
+                # RefreshMode=datasource[0][1]
+            else:
+                print('Depenent job are not completed ')
+                continue        # DataFeedNametest='D_2_Sales_ODS_Cycle_1'
+        
+
+        if RefreshMode == 'Composer':
+            print('Cloud Composer')
+            try:
+                trigger_task = TriggerDagRunOperator(
+                    task_id=f'trigger_{NewContainerName}',  # Unique task_id for each run
+                    trigger_dag_id=f'{NewContainerName}',  # Unique dag_id for each run
+                    conf={"dynamic_value": NewContainerName},  # Pass dynamic value through conf
+                    dag=context['dag']
+                )
+
+                trigger_task.execute(context=context)
+            except DagNotFound as e:
+                print(f"Error: {str(e)}")
+            except Exception as ex:
+                print(f"An unexpected error occurred: {str(ex)}")
+                # Handle other exceptions if necessary
+
+        # if RefreshMode=='Composer':
+        #     print('Cloud Composer')
+        #     trigger_task = TriggerDagRunOperator(
+        #         task_id=f'trigger_{NewContainerName}',  # Unique task_id for each run
+        #         trigger_dag_id=f'{NewContainerName}',  # Unique dag_id for each run
+        #         # wait_for_completion=True,
+        #         conf={"dynamic_value": NewContainerName},  # Pass dynamic value through conf
+        #         dag=context['dag']
+        #     )
+
+        #     # Execute the operator
+        #     trigger_task.execute(context=context)
+    if env_name =='PROD':
+# Define the trigger_pbi_refresh function
+        def trigger_pbi_refresh(**kwargs):
+            print("Triggering Cloud Function Gen2...for PROD")
+            try:
+                getToken = google.auth.transport.requests.Request()
+                audience = 'https://prd-196865-sptobq-trigger-gen2-tq57nn3s2q-ue.a.run.app'
+                TOKEN = google.oauth2.id_token.fetch_id_token(getToken, audience)
+                # add
+                # Include the message in the payload
+                # Access the message dynamically
+                message_payload = {
+                    "name": 'SRE_Auto_Dataload',
+                    "message": 'PROD_HOLD_STATUS'  # Access message dynamically
+                }
+                response = requests.post(
+                    'https://prd-196865-sptobq-trigger-gen2-tq57nn3s2q-ue.a.run.app',
+                    timeout=7,
+                    headers={'Authorization': f"Bearer {TOKEN}", "Content-Type": "application/json"},
+                    data=json.dumps(message_payload)
+                )
+                response.raise_for_status()
+                return 'Success'
+            except requests.exceptions.ReadTimeout:
+                pass
+
+        # Define the trigger_refresh_task operator
+        trigger_refresh_task = PythonOperator(
+            task_id='trigger_refresh_task',
+            python_callable=trigger_pbi_refresh,
+            dag=main_dag
+        )# Define PythonOperator to trigger dynamic jobs
+trigger_dynamic_jobs_task = PythonOperator(
+    task_id="trigger_dynamic_jobs",
+    python_callable=trigger,
+    provide_context=True,
+    dag=main_dag,
+)
