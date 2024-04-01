@@ -1,0 +1,36 @@
+SELECT
+  *,
+  UPPER(DashboardName)AS dash_new,
+  LOWER(DashboardName)AS dash_lower,
+  REPLACE(CreatedBY, 'mayuri.sarathe', 'MS')AS Created_BY_New
+FROM
+  `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_dashboard_master_in_table`
+ 
+select trim(' Start time  '),' Start time  '
+union all
+select ltrim(' Start time  '),' Start time  '
+union all
+select rtrim(' Start time  '),' Start time  '
+union all
+select replace ('Start time',' ','')
+select regexp_replace('Start time', r'\s', ''),
+SELECT
+  DashboardKey,DashboardName,CreatedBY,CreatedTimeStamp,
+  DashboardKey || " , " ||DashboardName|| " , " ||CreatedBY|| " , "||CreatedTimeStamp as all_details_2,
+  concat(DashboardKey,' , ',DashboardName,' , ',CreatedBY,' , ',CreatedTimeStamp,' , ' ) as all_details_3
+FROM
+  `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_dashboard_master_in_table`
+ 
+select Workspace_id_DEV,
+substr(Workspace_id_DEV,1,8)as dev_env,
+substr(DashboardName,1,5)as dashboard
+ 
+ FROM
+  `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_dashboard_master_in_table`
+ 
+ 
+  select Workspace_id_DEV,
+string_agg(Dataset_id_DEV)
+ FROM
+  `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_dashboard_master_in_table`
+  group by Workspace_id_DEV
