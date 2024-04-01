@@ -1,0 +1,203 @@
+Create a class Employee having members as empId, empName, empAge, empSal  members.
+Create a class Operation which has function addemployee (Employee) which will add empId as Key and [empName, empAge , empSal]  List as values in dictionary (Add 3 object in dictionary) .
+ 
+Key
+	
+Value
+
+
+empId   
+	
+[empName,empAge,empSal]
+ 
+Operation class will have another function searchemp(empId) which will accept empId from user and if  empId is found in dictionary as key   then print the details of that  employee. 
+   Operation class will have another function updateempinfo(empId) which will             take empName, empAge, and empSal from user and update the users empId    the user wants to update.
+Following action has to perform.
+Create 3 object of Employee and pass it to addemployee function which  will add objects  in dictionary. (Accept empId , empName etc ) from User using input() function.
+Accept empId from user and pass it to searchemp(empid) which will print the details of that employee who’s empId is matching from dictionary.
+Call updateempinfo() which will update employee details based on empId and print all the data in dictionary. 
+
+Python String operation
+Using 2 strings, s1 and s2, create a new string by appending s2 in the middle of s1
+Sample input 
+ s1 = "Samy"
+ s2 = "Kelly"
+Sample output 
+ SaKellymy
+ 
+Count all lower case, upper case, digits, and special symbols from a given string
+Sample input 
+      str1 = "P@#yn26at^&i5ve"   
+ Sample output
+       Total counts of chars, digits, and symbols
+Chars = 8
+Digits = 3
+Symbol = 4     
+ 
+Accept a string, and return the sum and average of the digits that appear in the string, ignoring all other characters 
+Sample input 
+     str1 = "English = 78 Science = 83 Math = 68 History = 65".
+Sample output 
+      sum is 294
+      average is 73.5
+      
+ 
+Accept a long string from user and return each word in reverse way
+Sample input     
+    My name is Sam I live in Mumbai
+Sample output 
+    Mumbai in live I Sam is name My 
+ 
+ 
+ 
+Accept a string from user and print the word with is occurring maximum time.
+Sample input 
+    My name is Sam.  Sam lives in Mumbai. Sam plays cricket.
+Sample output 
+    Sam is occurring 3 times
+Python Collection
+ Given a Python list, find value 20 in the list, and if it is present, replace it with 200. Only update the first occurrence of a value
+Sort a tuple of tuples by 2nd item
+Sample input 
+                       tuple1 = (('a', 23), ('b', 37), ('c', 11), ('d',29))
+          Sample output                                                       
+                      (('c', 11), ('a', 23), ('d', 29), ('b', 37))
+      
+Create below 2 sets and try intersection, union, difference, symmetric_difference() and isdisjoint() function
+Sample input 
+    set1 = {10, 20, 30, 40, 50}
+    set2 = {60, 70, 80, 90, 10}
+ 
+Create an empty dictionary and do following operation on it 
+ Add 5 key and values in it 
+ Accept a key from user and remove that key and values from dictionary 
+  Accept a key from user and print the value of that key 
+ Accept all key and values from the dictionary  
+ 
+Python statement and arithmetic operators U... by Vinodrai Padia, NootanVinodrai Padia, Nootan12:10 PM
+Python statement and arithmetic operators
+Using input() function accepts 3 numbers from user and print the biggest number. 
+ 
+Store the below words and each variable and print it
+    Sample input     
+    All work and no play make Jack a dull boy.
+ 
+Accept and long string from user and find the number of vowels in that string. 
+    Sample input 
+     My name is Paul I live in Mumbai.
+ 
+Input 2 numbers from user and an operator from user  + , - ,* , / based on operator do the operation 
+   Sample input     
+    10    10   *   it should do multiplication and display the output.
+ 
+Run below code on REPL and observer the output 
+    5 % 2 
+    9 % 5
+   15%12
+   12 % 15
+     0 % 7
+    7 % 0
+Python Conditioning if and else
+ Accept a number from  store it in variable  name as age
+If the age greater then 18 and equal to 60 then print Person can vote
+If the age is less than 18 and greater than 0 print Person cannot vote
+Else print invalid age.
+ 
+Accept a character from user and check whether is vowel or not. 
+      
+Accept username and   password as string from user. If the username==” Admin” and password==”123” then print Welcome Admin else print invalid username or password.
+ 
+ 
+ 
+ 
+Python logical operators
+Enter the following expressions into the Python shell and observe the output:
+True or False
+True and False
+not (False) and True
+True or 7
+False or 7
+True and 0
+False or 8
+"happy" and "sad"
+"happy" or "sad"
+"" and "sad"
+"happy" and "“
+ 
+  Python Loops
+Write a program using while loop to print even numbers in range of 1 to 25.
+ 
+Write the same using for loop.
+ 
+Write a program using while loop to evaluate factorial of a number.
+ 
+Write a function sum_of_squares that computes the sum of the squares
+Example, sum_of_squares(987) should return 194, since9**2 + 8**2 + 7**2 == 81 +   64 + 49 == 194
+Sample
+sum_of_squares(1)
+1
+sum_of_squares(9)                                                      
+81
+sum_of_squares(11)
+2
+sum_of_squares(121)
+6
+ 
+Write a Python program to get the Fibonacci series between 0 to 50.
+Note : The Fibonacci Sequence is the series of numbers :
+0, 1, 1, 2, 3, 5, 8, 13, 21, ....
+Every next number is found by adding up the two numbers before it.
+Expected Output : 1 1 2 3 5 8 13 21 34
+ 
+has context menuParagraph
+
+How to set up environment using Python How to print "Hello World" and demo on scripts covering all basic data types How to update variables A demo on naming rules How to sort a list of strings How to use split method How to count words in a sentence How to format strings How to perform Negative Indexing and slicing on lists How to Work with append, insert, sort and index methods in lists High Level Agenda: ▪ Variable types ▪ Basic operators ▪ Decision making ▪ Loops ▪ Strings ▪ Sets ▪ Lists ▪ Tuples ▪ Dictionary ▪ Date & Time ▪ Functions ▪ Classes/Objects ▪ Exceptions ▪ Files I/O ▪ Multi-Threading ▪ Decorators ▪ Database access ▪ Unit Test ▪ NumPy ▪ Pandas ▪ Matplotlib ▪ Python Wheel How to unpack a tuple in several variables How to reverse a tuple How to count the elements in a list until an element is a tuple How to add an item in a tuple How to create a Simple Dictionary How to access Dictionary Items How to sum up dictionary items How to Add Dictionary Key How to perform Dictionary Filtering How to modify Multilevel Dictionaries How to find sum of all counts in a collections. How to generate date and time A demo on Function Blueprint How to use callable objects to add two variables How to add two numbers using lambda functions How to print command line arguments passed in a python program How to calculate the arithmetic mean of a variable number of values How to overload operators How to work with exceptions
+How to count words in File How to Work with... by Vinodrai Padia, NootanVinodrai Padia, Nootan9:12 AM
+How to count words in File How to Work with openpyxl module to access excel spreadsheets How to work with pyPDF2 module to access pdf documents How to work with python-docx module to access word documents How to JSON and CSV files using json and csv modules How to solve Producer consumer problem using Multithreading How to write a function decorator How to Work with nested decorators Accessing database using python select ,insert , update, delete on database
+ What is NumPy Installing NumPy NumPy arrays... by Vinodrai Padia, NootanVinodrai Padia, Nootan9:12 AM
+What is NumPy Installing NumPy NumPy arrays NumPy array function What is Pandas Need for Pandas Installation Pandas Create Pandas Series Create Data Frame Pandas Input output Pandas read_table Pandas read_csv Pandas read_excel Pandas read_json Pandas read SQL Adding, removing and selecting Column to Data Frame Adding, removing and selecting row to Data Frame Pandas - Basic Functionality Axes,Dtype,Empty,Ndim,Size,values,head(),tail(), T (Transpose) DataFrame Functions Pandas – Iteration Pandas – Sorting Working with Text Data Indexing and Selecting Data Applying Aggregations on DataFrame Working with missing data Working with where() and other query() method Working on duplicate data Figures and subplots Bar plotting Pie and Bar charts Introduction to Wheels Creating a Wheel Project Creating Wheel binary Publishing Python Wheels on PyP
+has context menuParagraph
+
+
+how to transfer meg to composer to cloud function
+import functions_framework
+ 
+@functions_framework.http
+def hello_http(request):
+    """HTTP Cloud Function.
+    Args:
+        request (flask.Request): The request object.
+        <https://flask.palletsprojects.com/en/1.1.x/api/#incoming-request-data>
+    Returns:
+        The response text, or any set of values that can be turned into a
+        Response object using `make_response`
+        <https://flask.palletsprojects.com/en/1.1.x/api/#flask.make_response>.
+    """
+    request_json = request.get_json(silent=True)
+    request_args = request.args
+ 
+    if request_json and 'name' in request_json:
+        name = request_json['name']
+    elif request_args and 'name' in request_args:
+        name = request_args['name']
+    else:
+        name = 'World'
+ 
+    # Access the additional message
+    if request_json and 'message' in request_json:
+        message = request_json['message']
+    else:
+        message = 'No message provided'
+ 
+    # Access the numbers for addition
+   
+    num1 = 4
+    num2 = 5
+       
+    result = num1 + num2
+ 
+ 
+    print(f'Received message: {message}')
+    print(f'Sum of {num1} and {num2}: {result}')
+ 
+    return 'Hello {}! Sum: {}'.format(name, result)
