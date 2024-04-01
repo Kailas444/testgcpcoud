@@ -1,0 +1,72 @@
+operator = "bigquery"
+ 
+sql = """"""
+def pre_execute(task, cf_event): 
+    from google.cloud import bigquery 
+    from google.cloud import storage
+    import json 
+    import pandas as pd   
+    import requests
+    from io import StringIO
+ 
+    sre_datalake_project_id = cf_event.get_var('sre_datalake_project_id')
+    sre_database_in = cf_event.get_var('sre_database_in')
+    
+    datalake_project_id = cf_event.get_var('datalake_project_id')
+    database_in = cf_event.get_var('database_in')
+ 
+    client = bigquery.Client()
+    env_name = cf_event.get_var('env_name_value')
+    #remove env_name1 before transfer into UAT and Prod
+    print('Start')
+    tenant_id ='#{tenant_id}#'
+    print(f'tanant id={tenant_id}')
+    # authority_url = f'https://login.microsoftonline.com/{tenant_id}'
+    # restapi_url = 'https://api.powerbi.com/v1.0/myorg/groups/'
+    # client_id = 'fc196e85-ae28-4435-a590-29c5506330a5'
+    # data1 = {
+    #     'grant_type':'client_credentials',
+    #     'resource': '00000003-0000-0ff1-ce00-000000000000/ts.accenture.com@e0793d39-0939-496d-b129-198edd916feb',
+    #     'client_id': 'be27f10d-572f-4d16-be88-2d88b0192ee7@e0793d39-0939-496d-b129-198edd916feb',
+    #     'client_secret': '6yfhkgp8ZxKti7WxPxVyrapcBNa5CXAuZF+fFOtw5wE=',
+    # }
+    
+    # headers1 = {
+    #     'Content-Type':'application/x-www-form-urlencoded'
+    # }
+    
+    # url1 = "https://accounts.accesscontrol.windows.net/e0793d39-0939-496d-b129-198edd916feb/tokens/OAuth/2"
+    # r1 = requests.post(url1, data=data1, headers=headers1)
+    # #print(r.text)
+    # json_data1 = json.loads(r1.text)
+    # #print("json_data: ",json_data)
+    # token = json_data1['access_token']
+    # #print("token:", token)
+    
+    
+    # headers2 = {
+    #     'Authorization': f"Bearer {token}",
+    #     'Accept':'application/json;odata=verbose',
+    #     'Content-Type': 'application/json;odata=verbose',
+    #     'If-Match':'*'
+    # }
+    
+    # # print(f"ID: {id_value}, Title: {title_value}, Test Date: {test_date}.status_value:{status_value}")
+    # url=f"https://ts.accenture.com/sites/CorporateDataAnalyticsOffice-CDAODataRefreshAutomation/_api/Web/GetFolderByServerRelativeUrl('Document Library')/Files('TestREST.CSV')/$value"
+    # p = requests.get(url,headers=headers2)
+    # print(p.text)
+    # print('step1')
+    # #text_data=p.text
+    # df = pd.read_csv(StringIO(p.text))
+    # # df.to_csv('output.csv', index=False)
+    # storage_client = storage.Client()
+    # print('step2')
+    # bucket = storage_client.get_bucket('prd-65343-datalake-bd-196865-entsrcdtes-prodtest-raw')
+    # print('step3')
+    # output_file=f'gs://prd-65343-datalake-bd-196865-entsrcdtes-prodtest-raw/output.csv'
+    # print('step4')
+    # df.to_csv(output_file,index=False)
+    # print('step5')
+    task.sql =f"""
+    select * from `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_POC_SPBQ_in_table` WHERE ID = 7
+    """  
