@@ -1,0 +1,143 @@
+SELECT
+  *,
+  UPPER(DashboardName)AS dash_new,
+  LOWER(DashboardName)AS dash_lower,
+  REPLACE(CreatedBY, 'mayuri.sarathe', 'MS')AS Created_BY_New
+FROM
+  `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_dashboard_master_in_table`
+ 
+select trim(' Start time  '),' Start time  '
+union all
+select ltrim(' Start time  '),' Start time  '
+union all
+select rtrim(' Start time  '),' Start time  '
+union all
+select replace ('Start time',' ','')
+select regexp_replace('Start time', r'\s', ''),
+SELECT
+  DashboardKey,DashboardName,CreatedBY,CreatedTimeStamp,
+  DashboardKey || " , " ||DashboardName|| " , " ||CreatedBY|| " , "||CreatedTimeStamp as all_details_2,
+  concat(DashboardKey,' , ',DashboardName,' , ',CreatedBY,' , ',CreatedTimeStamp,' , ' ) as all_details_3
+FROM
+  `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_dashboard_master_in_table`
+ 
+select Workspace_id_DEV,
+substr(Workspace_id_DEV,1,8)as dev_env,
+substr(DashboardName,1,5)as dashboard
+ 
+ FROM
+  `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_dashboard_master_in_table`
+ 
+ 
+  select Workspace_id_DEV,
+string_agg(Dataset_id_DEV)
+ FROM
+  `prd-65343-datalake-bd-88394358.prd_test_196865_in.196865_aen_perm_dashboard_master_in_table`
+  group by Workspace_id_DEV
+
+from google.cloud import bigquery
+import pandas as pd
+ 
+# Set up BigQuery client
+client = bigquery.Client()
+ 
+# Step 1: Read Data from BigQuery into a DataFrame
+sql_query = "SELECT * FROM `your_project_id.your_dataset_id.your_table_id`"
+df = client.query(sql_query).to_dataframe()
+ 
+# Step 2: Update the DataFrame
+# For example, update specific columns
+df['StartTime'] = new_start_time
+df['EndTime'] = new_end_time
+df['Status'] = new_refresh_status
+ 
+# Step 3: Write the Updated DataFrame Back to BigQuery
+job_config = bigquery.LoadJobConfig(
+    write_disposition="WRITE_TRUNCATE"  # To replace existing data
+)
+job = client.load_table_from_dataframe(df, 'your_project_id.your_dataset_id.your_table_id', job_config=job_config)
+job.result()  # Wait for the job to complete
+
+# Your JSON data
+json_data = {
+    "d": {
+        "results": [
+            {
+                # ... other fields ...
+                "Id": 171,
+                # ... other fields ...
+            }
+        ]
+    }
+}
+ 
+# Extract and print the "Id" value
+id_value = json_data['d']['results'][0]['Id']
+print(f'"Id": {id_value}')
+
+df = client.query(query).to_dataframe()
+column_data_types = df.dtypes
+# Print the data types
+print(df)
+print(column_data_types)
+print('Start')
+json_data_split = df.to_json(orient='split', date_format='iso', default_handler=str)
+# Parse the JSON
+parsed_json = json.loads(json_data_split)
+# Extract and print the values of the 'price' and 'quantity' columns
+key_values = parsed_json['data'][0]
+value1 = key_values[0]
+
+import pandas as pd
+from google.cloud import bigquery
+ 
+client = bigquery.Client(project='your-project-id')
+ 
+query = """
+SELECT * FROM your_dataset.your_table
+"""
+ 
+# Execute the query
+query_job = client.query(query)
+ 
+# Check if the query returned results
+if query_job.total_rows > 0:
+    # Get the schema information from the query results
+    schema = [field.name for field in query_job.schema]
+ 
+    # Create the DataFrame using the schema and query results
+    df = pd.DataFrame(data=[list(row) for row in query_job], columns=schema)
+ 
+    # Now you can work with the DataFrame
+    print(df)
+else:
+    print("No results returned by the query.")
+
+"If it's not Java ,it's just a bytecode" 😎
+
+how frameworks and libraries like Spring, Hibernate, Spark, and Kafka have helped keep Java alive ?? 🤔
+
+#Java
+has been around for over two decades, and in that time, it has become one of the most widely used programming languages in the world 💪.
+
+However, some argue that Java's popularity has waned in recent years, with the rise of newer languages like Python and JavaScript 😌.
+
+Despite this, Java remains a crucial language in many industries, and one of the reasons for this is the popularity of frameworks and libraries like Spring, Hibernate, Spark, and Kafka ...😉
+
+#Spring
+🌱is a popular framework for building web applications in Java. It provides a wide range of features, including inversion of control, aspect-oriented programming, and support for MVC architectures. Spring has been around since the early 2000s, and its popularity has only grown over the years. Today, it is used by companies 🏦🏢 large and small to build robust and scalable web applications 🧱🧱.
+
+#Hibernate
+🗃is an object-relational mapping library for Java ☕. It allows developers to map Java objects to relational databases, making it easier to work with databases in Java applications. Hibernate has been around since 2001, and it remains a popular choice for developers today. Many Java-based web applications rely on Hibernate to interact with databases.
+
+#Spark
+is a fast and powerful framework for big data processing🎥. It allows developers to process large datasets quickly and efficiently, and it supports a wide range of data sources, including Hadoop, Cassandra, and Amazon S3. Spark was first released in 2014, and since then, it has become one of the most popular big data processing frameworks in the world.
+
+#Kafka
+is a distributed streaming platform that is used to build real-time data pipelines and streaming applications ⏩. It provides a scalable and fault-tolerant platform for processing streams of data, making it ideal for use in large-scale data processing applications. Kafka was first released in 2011, and it has since become a critical component in many big data processing pipelines.
+
+These frameworks and libraries have helped to keep Java alive👨‍💻 and relevant in an ever-changing technology landscape. They provide developers with the tools they need to build robust, scalable, and efficient applications in Java. Without these tools, Java may have struggled to remain competitive with newer programming languages.
+
+However, thanks to the popularity of frameworks like Spring, Hibernate, Spark, and Kafka ... 😌🙏, Java continues to be a go-to language for many developers and companies around the world🌍.
+
+The person who created this image owns its rights.
